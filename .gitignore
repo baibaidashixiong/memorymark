@@ -1,0 +1,4 @@
+/build*/
+*.json
+*.csv
+__pycache__/
