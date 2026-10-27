@@ -23,6 +23,8 @@ int main(void) {
     CHECK(stats.min==1 && stats.median==2.5 && stats.mean==2.5 && fabs(stats.stddev-sqrt(1.25))<1e-10);
     double rates[]={1,4,16};
     CHECK(fabs(mm_score_from_rates(rates,3)-4)<1e-12);
+    double weights[]={1,2,1};
+    CHECK(fabs(mm_score_weighted(rates,weights,3)-4)<1e-12);
     rates[1]=0; CHECK(mm_score_from_rates(rates,3)==0);
     uint64_t a=0,b=0;
     CHECK(mm_rng(&a)==UINT64_C(0xe220a8397b1dcdaf));

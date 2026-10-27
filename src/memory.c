@@ -22,6 +22,16 @@ int mm_memory_init(mm_memory *m, const mm_config *c, unsigned worker) {
     m->data=mm_alloc(c->size);
     if (!m->data) return -1;
     for (size_t i=0;i<m->slots;++i) m->data[i]=(uint64_t)i^c->seed;
+    if (c->test==COPY || c->test==TRIAD) {
+        m->data2=mm_alloc(c->size);
+        if (!m->data2) goto fail;
+        for (size_t i=0;i<m->slots;++i) m->data2[i]=((uint64_t)i+UINT64_C(0x9e3779b97f4a7c15))^c->seed;
+    }
+    if (c->test==TRIAD) {
+        m->data3=mm_alloc(c->size);
+        if (!m->data3) goto fail;
+        memset(m->data3,0,c->size);
+    }
     if (c->test==RANDOM_READ || c->test==RANDOM_WRITE || c->test==LATENCY) {
         size_t n=c->test==LATENCY ? m->count : m->index_count;
         if (n>SIZE_MAX/sizeof(size_t)) goto fail;
@@ -55,4 +65,4 @@ int mm_ring_valid(const mm_memory *m) {
     }
     return p==0;
 }
-void mm_memory_destroy(mm_memory *m) { mm_free(m->data); mm_free(m->indices); memset(m,0,sizeof(*m)); }
+void mm_memory_destroy(mm_memory *m) { mm_free(m->data); mm_free(m->data2); mm_free(m->data3); mm_free(m->indices); memset(m,0,sizeof(*m)); }

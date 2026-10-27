@@ -109,13 +109,13 @@
       <p class="eyebrow">Independent review · GPT sub-agent + local audit</p>
       <h1>MemoryMark 现在够用，但一键分数还不能代表整台机器的内存性能</h1>
       <p class="lede">基础访问内核、误差传播、随机环验证和多线程隔离已经有不错的工程基础。下一阶段应先修正评分边界与结果语义，再扩大测试模式；继续增加模式数量不是当前最高收益。</p>
-      <div class="meta"><span>审查日期 2026-10-27</span><span>版本 1.2.0</span><span>Linux x86_64</span><span>CTest 3/3 通过</span></div>
+      <div class="meta"><span>审查日期 2026-10-27</span><span>版本 1.3.0</span><span>Linux x86_64</span><span>CTest 3/3 通过</span></div>
     </div>
   </header>
 
   <div class="tldr shell">
     <strong>结论先行</strong>
-    <p>第一批修复已经完成：评分下限改为 256 MiB、延迟链独立使用 64 字节步长、正式评分改为 5 轮、评分 quick smoke 与地址哈希进入 CTest。下一阶段最值得做的是明确多线程计时语义、把 128 MiB 评分为 warm logical-access score、补环境和编译指纹，再扩展 Copy/Triad、TLB sweep、多链延迟、NUMA 与流式写。</p>
+    <p>第一批修复已经完成：八项 general-v3 评分、Copy/Triad、公开加权总分、三组摘要、384 MiB 峰值预算、评分 quick smoke 与地址哈希都已落地。下一阶段最值得做的是明确多线程计时语义、补环境和编译指纹，再扩展 TLB sweep、多链延迟、NUMA 与流式写。</p>
   </div>
 
   <nav aria-label="页面导航">
@@ -137,7 +137,7 @@
           <span class="phase-label p0">PHASE 1 · 先修语义</span>
           <h3>评分可信度</h3>
           <ul>
-            <li>已完成：最低预算改为 256 MiB</li>
+            <li>已完成：最低预算按三数组 Triad 改为 384 MiB</li>
             <li>已完成：延迟链改用 64 字节节点步长</li>
             <li>采集 CPU、内核、编译参数与实际 CPU</li>
             <li>已完成：增加 quick 评分路径 CTest</li>
@@ -177,9 +177,9 @@
       </div>
 
       <article class="finding" data-priority="p0">
-        <div class="finding-head"><h3>评分最低内存限制已与延迟测试需求对齐</h3><span class="tag p2">已修复</span></div>
-        <p class="evidence">评分下限现为 256 MiB；255 MiB 在参数阶段失败，256 MiB 进入 quick smoke。128 MiB 数据区和 128 MiB 排列数组的峰值需求已由所有构建矩阵验证。</p>
-        <p class="action"><b>后续</b>可设计低峰值环构建以降低 256 MiB 下限，但当前行为已经自洽。</p>
+        <div class="finding-head"><h3>评分最低内存限制已与三数组需求对齐</h3><span class="tag p2">已修复</span></div>
+        <p class="evidence">评分下限现为 384 MiB，对应 Triad 的三个 128 MiB 数组；383 MiB 在参数阶段失败，384 MiB 进入 quick smoke。延迟排列和随机索引辅助区也纳入预算。</p>
+        <p class="action"><b>后续</b>可设计低峰值三数组布局，但当前行为已经自洽。</p>
       </article>
 
       <article class="finding" data-priority="p0">
@@ -214,7 +214,7 @@
 
       <article class="finding" data-priority="p1">
         <div class="finding-head"><h3>评分 quick smoke 与地址哈希已进入 CTest</h3><span class="tag p2">已修复</span></div>
-        <p class="evidence">CTest 新增 <code>score-smoke</code>，使用不可比较的 quick profile 验证六项、几何平均、JSON/CSV、profile 字段和逐项/聚合 sequence hash。正式评分仍通过手工长测试验收。</p>
+        <p class="evidence">CTest 新增 <code>score-smoke</code>，使用不可比较的 quick profile 验证八项、公开权重、加权几何平均、三个分组、JSON/CSV、详细文本和逐项/聚合 sequence hash。正式评分仍通过手工长测试验收。</p>
         <p class="action"><b>后续</b>可增加可选的长评分夜间测试，但不应让每次 CI 都固定运行 25 秒以上。</p>
       </article>
 
@@ -243,9 +243,9 @@
       </article>
 
       <article class="finding" data-priority="p1">
-        <div class="finding-head"><h3>覆盖模式还缺少最常用的内存工作负载</h3><span class="tag p1">P1 · 覆盖度</span></div>
-        <p class="evidence">现有六项覆盖基础读写、混合、随机和单链延迟，但没有 Copy/Triad、页步长/TLB sweep、多链 MLP、固定总容量并行分片、同核 SMT 对照。</p>
-        <p class="action"><b>建议</b>按实际用途排序增加 Copy/Triad、TLB sweep、多链追逐；这三种对解释真实应用最有价值。每项都必须明确流数量、逻辑字节和索引开销。</p>
+        <div class="finding-head"><h3>已加入 Copy/Triad，仍缺 TLB 与 MLP 覆盖</h3><span class="tag p2">部分完成</span></div>
+        <p class="evidence">评分现有八项，包含两数组 Copy 和三数组 Triad，并明确 Copy=16、Triad=24 逻辑字节/操作。仍缺页步长/TLB sweep、多链 MLP、固定总容量并行分片、同核 SMT 对照。</p>
+        <p class="action"><b>后续</b>优先增加 TLB sweep 和多链追逐；两者对解释真实应用最有价值。每项都必须明确流数量、逻辑字节和索引开销。</p>
       </article>
 
       <article class="finding" data-priority="p2">
@@ -273,13 +273,14 @@
       <table class="matrix">
         <thead><tr><th>范围</th><th>当前状态</th><th>主要缺口</th></tr></thead>
         <tbody>
-          <tr><td>顺序读/写</td><td>已实现并验证</td><td>缺少 Copy/Triad、non-temporal、多流写</td></tr>
+          <tr><td>顺序读/写</td><td>已实现并验证</td><td>缺少 non-temporal、多流写</td></tr>
+          <tr><td>Copy/Triad</td><td>两/三数组 STREAM 风格内核，16/24 字节语义已测</td><td>尚无 multi-thread shared working-set 版本</td></tr>
           <tr><td>读写混合</td><td>已实现 0/30/50/70/100 比例测试</td><td>固定读块/写块，不是逐元素概率流或 Triad</td></tr>
           <tr><td>随机读写</td><td>已实现固定种子与范围验证</td><td>固定 warm trace、索引流开销、无放回模式</td></tr>
-          <tr><td>依赖延迟</td><td>完整环和损坏环测试充分</td><td>评分步长 8 字节、单链、无 MLP 扫描</td></tr>
+          <tr><td>依赖延迟</td><td>完整环和损坏环测试充分；评分使用 64 字节链步长</td><td>仅单链，无 MLP 扫描</td></tr>
           <tr><td>工作集扫描</td><td>倍增/线性及预算失败已测</td><td>没有自动关联 Cache/TLB/页大小拐点</td></tr>
           <tr><td>多线程</td><td>私有工作集、TSan、逐线程计数已测</td><td>完成吞吐而非重叠窗口；无私有多核拓扑对照</td></tr>
-          <tr><td>一键评分</td><td>文本/JSON/CSV 手工成功；公式单测</td><td>无 CTest、环境指纹、地址哈希；内存下限错误</td></tr>
+          <tr><td>一键评分</td><td>单总分、三分组、公开权重、地址哈希、quick CTest 已完成</td><td>仍需实际 CPU/编译 flags、MAD/IQR 和长期漂移测试</td></tr>
           <tr><td>NUMA/流式写</td><td>明确未实现</td><td>需作为高级可选模式，而非基础分的一部分</td></tr>
           <tr><td>跨平台</td><td>Linux GCC/Clang 实测</td><td>Windows、ARM、其他 Unix 无 CI 覆盖</td></tr>
         </tbody>
@@ -301,7 +302,7 @@
         <div>
           <h3>各自补充</h3>
           <ul>
-            <li>子代理首先发现评分 192/256 MiB 自相矛盾，以及并行完成吞吐语义；前者已修复。</li>
+            <li>子代理首先发现评分内存下限自相矛盾，以及并行完成吞吐语义；前者已按 Triad 峰值修正为 384 MiB。</li>
             <li>本地审查补充了评分 latency stride=8、评分序列哈希缺失、固定值和 Python assert 风险；前三项已完成主要修复。</li>
             <li>最终顺序统一为：正确性 → 评分自动化/元数据 → 统计与并行语义 → 新工作负载 → NUMA/平台。</li>
           </ul>
@@ -323,11 +324,11 @@
       <h2>建议下一批改动</h2>
       <div class="next">
         <ol>
-          <li><b>已完成：</b>评分边界改为 256 MiB，延迟独立 64 字节步长，5 轮统计，quick score smoke 和评分级哈希。</li>
+          <li><b>已完成：</b>评分边界改为 384 MiB，八项加权总分，Copy/Triad，5 轮统计，quick score smoke 和评分级哈希。</li>
           <li><b>补环境指纹：</b>CPU 型号、内核、LLC、实际执行 CPU、完整编译 flags、THP/NUMA 可检测项。</li>
           <li><b>再改并行计时：</b>记录每线程 start/end，输出起跑偏斜与重叠率，明确 completion throughput。</li>
           <li><b>提升统计：</b>至少 5 个评分轮次，加入 MAD/IQR 与分组指数。</li>
-          <li><b>扩模式：</b>Copy/Triad → TLB sweep → 多链 chasing → 固定总工作集并行分片。</li>
+          <li><b>扩模式：</b>TLB sweep → 多链 chasing → 固定总工作集并行分片 → shared hash probe。</li>
         </ol>
       </div>
     </section>

@@ -5,7 +5,7 @@
 #include <stdlib.h>
 #include <string.h>
 const char *mm_test_name(mm_test t) {
-    static const char *names[] = {"seq-read", "seq-write", "mix", "random-read", "random-write", "latency", "all"};
+    static const char *names[] = {"seq-read", "seq-write", "mix", "copy", "triad", "random-read", "random-write", "latency", "all"};
     return names[t];
 }
 void mm_defaults(mm_config *c) {
@@ -53,10 +53,11 @@ void mm_help(void) {
          "Usage: memorymark                         Run the fixed score suite\n"
          "       memorymark --score [--json]       Same, with explicit mode/output\n"
          "       memorymark --score-quick           Fast diagnostic-only score smoke\n"
+         "       memorymark --score --details      Show weighted component scores\n"
          "       memorymark --test TYPE [options] Run detailed diagnostics\n"
          "  --score             Fixed v2 profile: 1 thread, 128M/thread, 0.5s x 5\n"
          "  --score-quick       Diagnostic profile for CI, not for hardware comparison\n"
-         "  --test seq-read|seq-write|mix|random-read|random-write|latency|all\n"
+         "  --test seq-read|seq-write|mix|copy|triad|random-read|random-write|latency|all\n"
          "  --size 8M           Working set PER THREAD (K/M/G = binary)\n"
          "  --threads 1         Threads, 1..256; private working sets\n"
          "  --thread-sweep      Run 1,2,...,threads; report scaling efficiency\n"
@@ -81,6 +82,7 @@ void mm_help(void) {
 int mm_parse(int argc, char **argv, mm_config *c) {
     mm_defaults(c);
     int test_seen=0, score=argc==1, quick=0, profile_override=0;
+    int details=0;
     for (int i=1; i<argc; ++i) {
         const char *k=argv[i], *v;
         uint64_t n;
@@ -88,6 +90,7 @@ int mm_parse(int argc, char **argv, mm_config *c) {
         if (!strcmp(k,"--version")) { puts("MemoryMark " MM_VERSION); return 1; }
         if (!strcmp(k,"--score")) { if (quick) goto invalid; score=1; continue; }
         if (!strcmp(k,"--score-quick")) { if (score) goto invalid; score=1; quick=1; continue; }
+        if (!strcmp(k,"--details")) { details=1; continue; }
         if (!strcmp(k,"--json") || !strcmp(k,"--csv")) {
             if (c->format) goto invalid;
             c->format = !strcmp(k,"--json") ? 1 : 2; continue;
@@ -143,11 +146,15 @@ invalid:
     if (score && c->ncpus>1) {
         fprintf(stderr,"--score accepts at most one CPU affinity because its fixed profile uses one worker\n"); return -1;
     }
-    if (score && c->memory_limit < (size_t)256*1024*1024) {
-        fprintf(stderr,"--score requires a memory limit of at least 256M\n"); return -1;
+    if (details && !score) {
+        fprintf(stderr,"--details is only valid with --score or --score-quick\n"); return -1;
+    }
+    if (score && c->memory_limit < (size_t)384*1024*1024) {
+        fprintf(stderr,"--score requires a memory limit of at least 384M\n"); return -1;
     }
     c->score=score;
     c->quick=quick;
+    c->details=details;
     size_t smallest=c->sweep ? c->min_size : c->size;
     if (c->size%8 || c->min_size%8 || c->max_size%8 || c->step%8 ||
         c->stride%8 || c->stride>smallest || c->min_size>c->max_size ||

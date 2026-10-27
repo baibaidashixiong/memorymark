@@ -19,7 +19,19 @@ typedef struct {
 } worker;
 static int verify(const mm_memory *m, const mm_config *c) {
     if (c->test==LATENCY) return mm_ring_valid(m);
-    if (c->test==SEQ_WRITE) {
+    if (c->test==COPY) {
+        for (size_t i=0;i<m->count;++i) {
+            size_t p=i*m->stride_words;
+            if (m->data[p]!=((uint64_t)p^c->seed)) return 0;
+            if (m->data2[p]!=m->data[p]+m->calls) return 0;
+        }
+    } else if (c->test==TRIAD) {
+        for (size_t i=0;i<m->count;++i) {
+            size_t p=i*m->stride_words;
+            if (m->data[p]!=((uint64_t)p^c->seed) || m->data2[p]!=(((uint64_t)p+UINT64_C(0x9e3779b97f4a7c15))^c->seed)) return 0;
+            if (m->data3[p]!=m->data[p]+UINT64_C(3)*m->data2[p]) return 0;
+        }
+    } else if (c->test==SEQ_WRITE) {
         for (size_t i=0;i<m->count;++i) if (m->data[i*m->stride_words]!=m->calls) return 0;
     } else if (c->test==RANDOM_WRITE) {
         for (size_t i=0;i<m->index_count;++i) if (m->data[m->indices[i]]!=m->calls) return 0;
@@ -34,6 +46,11 @@ static int verify(const mm_memory *m, const mm_config *c) {
         for (size_t i=0;i<m->slots;++i) if (m->data[i]!=((uint64_t)i^c->seed)) return 0;
     }
     return 1;
+}
+static unsigned bytes_per_access(const mm_config *c) {
+    if (c->test==COPY) return 16;
+    if (c->test==TRIAD) return 24;
+    return 8;
 }
 static void *work(void *arg) {
     worker *w=arg;
@@ -70,7 +87,7 @@ static void *work(void *arg) {
         w->ends[round]=mm_now();
         s->seconds=w->ends[round]-start;
         s->accesses=s->iterations*(uint64_t)per_pass;
-        s->bytes=s->accesses*8;
+        s->bytes=s->accesses*bytes_per_access(c);
         s->checksum=w->memory.checksum;
         mm_lock(&g->mutex);
         ++g->timed;
@@ -113,12 +130,19 @@ static int budget(const mm_config *c) {
     size_t count=1+(c->size/8-1)/(c->stride/8), extra=0;
     if (c->test==LATENCY) extra=count;
     if (c->test==RANDOM_READ || c->test==RANDOM_WRITE) extra=c->accesses ? c->accesses : count;
-    if (extra>(SIZE_MAX-c->size)/sizeof(size_t)) return -1;
-    size_t each=c->size+extra*sizeof(size_t);
+    size_t buffers=c->size;
+    if (c->test==COPY && c->size>SIZE_MAX-buffers) return -1;
+    if (c->test==COPY) buffers+=c->size;
+    if (c->test==TRIAD) {
+        if (c->size>SIZE_MAX/2 || buffers>SIZE_MAX-2*c->size) return -1;
+        buffers+=2*c->size;
+    }
+    if (extra>(SIZE_MAX-buffers)/sizeof(size_t)) return -1;
+    size_t each=buffers+extra*sizeof(size_t);
     if (each>c->memory_limit/c->threads) return -1;
     /* Reject configurations that cannot even represent one aggregate pass. */
     size_t ops=(c->test>=RANDOM_READ) ? (c->accesses ? c->accesses : count) : count;
-    if (ops>UINT64_MAX/8/c->threads || (c->iterations && c->iterations>UINT64_MAX/8/c->threads/ops)) return -1;
+    if (ops>UINT64_MAX/24/c->threads || (c->iterations && c->iterations>UINT64_MAX/24/c->threads/ops)) return -1;
     return 0;
 }
 int mm_run(const mm_config *c, mm_result *r) {

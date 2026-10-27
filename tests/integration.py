@@ -22,14 +22,17 @@ def run(*args, ok=True):
 
 base = ['--size', '4K', '--warmup', '0', '--repeat', '2', '--iterations', '3']
 data = json.loads(run('--test', 'all', '--threads', '3', '--json', *base))
-assert len(data['results']) == 6
+assert len(data['results']) == 8
 for result in data['results']:
     assert result['verified']
+    bytes_per_access = {'copy': 16, 'triad': 24}.get(result['test'], 8)
+    assert result['bytes_per_access'] == bytes_per_access
     for rnd in result['rounds']:
         total = rnd['total']
         workers = rnd['workers']
         assert len(workers) == 3
         assert total['logical_bytes'] == sum(w['logical_bytes'] for w in workers)
+        assert total['logical_bytes'] == total['accesses'] * bytes_per_access
         assert total['accesses'] == 3 * 512 * 3
         assert total['iterations'] == 9
         assert total['gbps'] > 0 and math.isfinite(total['gbps'])
@@ -37,7 +40,7 @@ for result in data['results']:
         assert (total['ns_access'] is not None) == (result['test'] == 'latency')
 
 rows = list(csv.DictReader(io.StringIO(run('--test', 'all', '--csv', *base))))
-assert len(rows) == 24
+assert len(rows) == 32
 assert all(None not in row and None not in row.values() for row in rows)
 assert {row['verified'] for row in rows} == {'true'}
 
@@ -78,9 +81,10 @@ run('--score', '--duration', '.01', ok=False)
 run('--score', '--test', 'all', ok=False)
 run('--score', '--threads', '2', ok=False)
 run('--score', '--cpu-affinity', '0,1', ok=False)
-run('--score', '--memory-limit', '255M', ok=False)
+run('--score', '--memory-limit', '383M', ok=False)
 run('--score-quick', '--duration', '.01', ok=False)
 run('--score', '--score-quick', ok=False)
+run('--details', ok=False)
 if hasattr(os, 'sched_getaffinity'):
     cpu = min(os.sched_getaffinity(0))
     run('--cpu-affinity', str(cpu), *base)

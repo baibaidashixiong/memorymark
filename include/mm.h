@@ -24,18 +24,20 @@ typedef pthread_cond_t mm_cond;
 #endif
 #define MM_MAX_THREADS 256
 #define MM_MAX_REPEAT 100
-#define MM_SCORE_COMPONENTS 6
-typedef enum { SEQ_READ, SEQ_WRITE, MIX, RANDOM_READ, RANDOM_WRITE, LATENCY, ALL } mm_test;
+#define MM_SCORE_COMPONENTS 8
+#define MM_SCORE_GROUPS 3
+typedef enum { SEQ_READ, SEQ_WRITE, MIX, COPY, TRIAD, RANDOM_READ, RANDOM_WRITE, LATENCY, ALL } mm_test;
+typedef enum { GROUP_STREAM, GROUP_RANDOM, GROUP_LATENCY } mm_score_group;
 typedef struct {
     mm_test test;
     size_t size, stride, min_size, max_size, step, accesses, memory_limit;
     unsigned threads, repeat, read_ratio;
     uint64_t iterations, seed;
     double duration, warmup, scale;
-    int format, sweep, thread_sweep, score, quick, cpus[MM_MAX_THREADS], ncpus;
+    int format, sweep, thread_sweep, score, quick, details, cpus[MM_MAX_THREADS], ncpus;
 } mm_config;
 typedef struct {
-    uint64_t *data;
+    uint64_t *data, *data2, *data3;
     size_t *indices;
     size_t slots, count, stride_words, index_count;
     uint64_t checksum, sequence_hash, calls;
@@ -57,6 +59,8 @@ typedef struct {
     mm_test test;
     double gbps, ns_access, million_ops, cv;
     uint64_t sequence_hash;
+    double weight;
+    mm_score_group group;
 } mm_score_component;
 typedef struct {
     char cpu_model[256];
@@ -71,7 +75,7 @@ typedef struct {
     size_t size, memory_limit, accesses;
     unsigned threads, repeat, read_ratio;
     uint64_t seed, sequence_hash;
-    double duration, warmup, score, max_cv, elapsed;
+    double duration, warmup, score, group_scores[MM_SCORE_GROUPS], max_cv, elapsed;
     size_t latency_stride;
     int stable, quick;
     const char *cpu;
@@ -116,6 +120,7 @@ void mm_kernel(mm_memory *m, const mm_config *c);
  * Allocation, warmup, verification and join are outside that interval. */
 int mm_run(const mm_config *c, mm_result *r);
 double mm_score_from_rates(const double *rates, unsigned n);
+double mm_score_weighted(const double *rates, const double *weights, unsigned n);
 int mm_run_score(const mm_config *c, mm_score_result *r);
 void mm_score_output(const mm_config *c, const mm_score_result *r);
 mm_stats mm_statistics(const double *v, unsigned n);

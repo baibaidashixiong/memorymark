@@ -12,6 +12,17 @@ void mm_seq(mm_memory *m, const mm_config *c) {
         for (;i<n;++i) a+=m->data[i*s];
     } else if (c->test==SEQ_WRITE) {
         for (size_t i=0;i<n;++i) m->data[i*s]=value;
+    } else if (c->test==COPY) {
+        size_t i=0;
+        for (;n-i>=4;i+=4) {
+            m->data2[i*s]=m->data[i*s]+value;
+            m->data2[(i+1)*s]=m->data[(i+1)*s]+value;
+            m->data2[(i+2)*s]=m->data[(i+2)*s]+value;
+            m->data2[(i+3)*s]=m->data[(i+3)*s]+value;
+        }
+        for (;i<n;++i) m->data2[i*s]=m->data[i*s]+value;
+    } else if (c->test==TRIAD) {
+        for (size_t i=0;i<n;++i) m->data3[i*s]=m->data[i*s]+UINT64_C(3)*m->data2[i*s];
     } else {
         /* Repeat exactly 100 logical operations, with a fixed read prefix. */
         size_t i=0;

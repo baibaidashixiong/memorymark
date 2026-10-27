@@ -3,18 +3,34 @@
 #include <stdlib.h>
 #include <string.h>
 double mm_score_from_rates(const double *rates, unsigned n) {
-    long double logs=0;
+    double *weights;
+    if (!n) return 0;
+    weights=malloc(n*sizeof(*weights));
+    if (!weights) return 0;
+    for (unsigned i=0;i<n;++i) weights[i]=1;
+    double score=mm_score_weighted(rates,weights,n);
+    free(weights);
+    return score;
+}
+double mm_score_weighted(const double *rates, const double *weights, unsigned n) {
+    long double logs=0, total_weight=0;
     if (!n) return 0;
     for (unsigned i=0;i<n;++i) {
-        if (!(rates[i]>0) || !mm_isfinite(rates[i])) return 0;
-        logs+=logl((long double)rates[i]);
+        if (!(rates[i]>0) || !mm_isfinite(rates[i]) || !(weights[i]>0) || !mm_isfinite(weights[i])) return 0;
+        logs+=(long double)weights[i]*logl((long double)rates[i]);
+        total_weight+=weights[i];
     }
-    return (double)expl(logs/n);
+    return total_weight>0 ? (double)expl(logs/total_weight) : 0;
 }
 int mm_run_score(const mm_config *base, mm_score_result *r) {
-    static const mm_test tests[MM_SCORE_COMPONENTS]={SEQ_READ,SEQ_WRITE,MIX,RANDOM_READ,RANDOM_WRITE,LATENCY};
+    static const mm_test tests[MM_SCORE_COMPONENTS]={SEQ_READ,SEQ_WRITE,MIX,COPY,TRIAD,RANDOM_READ,RANDOM_WRITE,LATENCY};
+    static const double weights[MM_SCORE_COMPONENTS]={.06,.06,.08,.11,.14,.15,.15,.25};
+    static const mm_score_group groups[MM_SCORE_COMPONENTS]={GROUP_STREAM,GROUP_STREAM,GROUP_STREAM,GROUP_STREAM,GROUP_STREAM,GROUP_RANDOM,GROUP_RANDOM,GROUP_LATENCY};
     mm_config c=*base;
     double rates[MM_SCORE_COMPONENTS];
+    double group_rates[MM_SCORE_GROUPS][MM_SCORE_COMPONENTS];
+    double group_weights[MM_SCORE_GROUPS][MM_SCORE_COMPONENTS];
+    unsigned group_counts[MM_SCORE_GROUPS]={0};
     double begin=mm_now();
     memset(r,0,sizeof(*r));
     c.score=0; c.quick=0; c.sweep=0; c.thread_sweep=0;
@@ -43,18 +59,26 @@ int mm_run_score(const mm_config *base, mm_score_result *r) {
         x->test=tests[i];
         x->gbps=result.bandwidth.median;
         x->ns_access=tests[i]==LATENCY ? result.latency.median : 0;
-        x->million_ops=tests[i]==LATENCY ? 1000/x->ns_access : x->gbps*125;
+        double operation_rates[MM_MAX_REPEAT];
+        if (result.samples[0].seconds<=0) { free(result.workers); return -1; }
+        for (unsigned round=0;round<c.repeat;++round) operation_rates[round]=(double)result.samples[round].accesses/result.samples[round].seconds;
+        x->million_ops=mm_statistics(operation_rates,c.repeat).median/1e6;
         if (!(x->million_ops>0) || !mm_isfinite(x->million_ops)) { free(result.workers); return -1; }
         x->cv=tests[i]==LATENCY
             ? (result.latency.mean>0 ? result.latency.stddev/result.latency.mean : HUGE_VAL)
             : (result.bandwidth.mean>0 ? result.bandwidth.stddev/result.bandwidth.mean : HUGE_VAL);
         rates[i]=x->million_ops;
+        x->weight=weights[i];
+        x->group=groups[i];
+        group_rates[x->group][group_counts[x->group]]=x->million_ops;
+        group_weights[x->group][group_counts[x->group]++]=x->weight;
         x->sequence_hash=result.sequence_hash;
         r->sequence_hash^=result.sequence_hash;
         if (x->cv>r->max_cv) r->max_cv=x->cv;
         free(result.workers);
     }
-    r->score=mm_score_from_rates(rates,MM_SCORE_COMPONENTS);
+    for (unsigned group=0;group<MM_SCORE_GROUPS;++group) r->group_scores[group]=mm_score_weighted(group_rates[group],group_weights[group],group_counts[group]);
+    r->score=mm_score_weighted(rates,weights,MM_SCORE_COMPONENTS);
     r->stable=r->score>0 && r->max_cv<=.10;
     r->elapsed=mm_now()-begin;
     return r->score>0 ? 0 : -1;
