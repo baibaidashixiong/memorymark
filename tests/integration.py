@@ -84,7 +84,6 @@ run('--score', '--cpu-affinity', '0,1', ok=False)
 run('--score', '--memory-limit', '383M', ok=False)
 run('--score-quick', '--duration', '.01', ok=False)
 run('--score', '--score-quick', ok=False)
-run('--details', ok=False)
 if hasattr(os, 'sched_getaffinity'):
     cpu = min(os.sched_getaffinity(0))
     run('--cpu-affinity', str(cpu), *base)

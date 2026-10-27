@@ -34,7 +34,7 @@ typedef struct {
     unsigned threads, repeat, read_ratio;
     uint64_t iterations, seed;
     double duration, warmup, scale;
-    int format, sweep, thread_sweep, score, quick, details, cpus[MM_MAX_THREADS], ncpus;
+    int format, sweep, thread_sweep, score, quick, cpus[MM_MAX_THREADS], ncpus;
 } mm_config;
 typedef struct {
     uint64_t *data, *data2, *data3;

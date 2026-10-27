@@ -66,7 +66,7 @@ check(float(row["streaming_bandwidth_score"]) > 0 and float(row["random_access_s
 check(row["sequence_hash"] == f"{aggregate:016x}", "CSV aggregate hash")
 check(all(f"{test}_sequence_hash" in row for test in hashes), "CSV component hashes")
 
-text = run("--score-quick", "--memory-limit", "384M", "--details")
+text = run("--score-quick", "--memory-limit", "384M")
 for label in ["Streaming bandwidth", "Random access", "Dependent latency", "Copy", "Triad"]:
     check(label in text, f"text details missing {label}")
 print("score smoke tests passed")

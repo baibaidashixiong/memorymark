@@ -100,6 +100,10 @@ static const char *group_key(mm_score_group group) {
     static const char *keys[]={"streaming_bandwidth","random_access","dependent_latency"};
     return keys[group];
 }
+static unsigned group_weight_percent(mm_score_group group) {
+    static const unsigned weights[]={45,30,25};
+    return weights[group];
+}
 static unsigned operation_bytes(mm_test test) {
     if (test==COPY) return 16;
     if (test==TRIAD) return 24;
@@ -146,18 +150,17 @@ void mm_score_output(const mm_config *c,const mm_score_result *r) {
         system_text(&r->system);
         putchar('\n');
         for (unsigned group=0;group<MM_SCORE_GROUPS;++group) {
-            printf("%-22s %10.2f Mops/s",group_label((mm_score_group)group),r->group_scores[group]);
-            if (group==GROUP_LATENCY) printf("  (%0.2f ns/access)",r->components[MM_SCORE_COMPONENTS-1].ns_access);
+            printf("%-22s %10.2f Mops/s | weight=%u%%",group_label((mm_score_group)group),r->group_scores[group],group_weight_percent((mm_score_group)group));
+            if (group==GROUP_LATENCY) printf(" | %0.2f ns/access",r->components[MM_SCORE_COMPONENTS-1].ns_access);
             putchar('\n');
-        }
-        if (c->details) {
-            puts("\nComponents:");
             for (unsigned i=0;i<MM_SCORE_COMPONENTS;++i) {
                 const mm_score_component *x=&r->components[i];
+                if ((unsigned)x->group!=group) continue;
                 printf("  %-19s %9.2f GB/s  %10.2f Mops/s  weight=%0.2f",score_label(x->test),x->gbps,x->million_ops,x->weight);
                 if (x->test==LATENCY) printf("  (%0.2f ns/access)",x->ns_access);
                 putchar('\n');
             }
+            putchar('\n');
         }
         printf("\nTotal run: %.1f s | Score = weighted geometric mean of eight component rates\n",r->elapsed);
         if (r->quick) printf("Quick profile is for diagnostics only; do not compare its score across machines.\n");

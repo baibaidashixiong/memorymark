@@ -20,14 +20,24 @@ ctest --test-dir build --output-on-failure
 ## 一键评分
 
 ```text
-MemoryMark Score: 276.0 MMark
-Status: STABLE (max variability 1.2%, verification PASSED)
+MemoryMark Score: 281.0 MMark
+Status: STABLE (max variability 1.8%, verification PASSED)
 Profile: general-v3 | 1 thread | 128 MiB/thread | 8388608 accesses/pass | 0.50 s x 5 | warm 0.10 s
 Sequence: aggregate=7e355b845c935c93 | stream-stride=8 | latency-stride=64
 
-Streaming bandwidth       2594.03 Mops/s
-Random access              158.93 Mops/s
-Dependent latency            9.48 Mops/s  (105.45 ns/access)
+Streaming bandwidth       2661.83 Mops/s | weight=45%
+  Sequential read         51.00 GB/s     6374.90 Mops/s  weight=0.06
+  Sequential write        27.57 GB/s     3445.68 Mops/s  weight=0.06
+  70/30 read/write        37.73 GB/s     4716.35 Mops/s  weight=0.08
+  Copy                    34.57 GB/s     2160.78 Mops/s  weight=0.11
+  Triad                   33.42 GB/s     1392.48 Mops/s  weight=0.14
+
+Random access              160.80 Mops/s | weight=30%
+  Random read              1.41 GB/s      176.28 Mops/s  weight=0.15
+  Random write             1.17 GB/s      146.67 Mops/s  weight=0.15
+
+Dependent latency            9.59 Mops/s | weight=25% | 104.25 ns/access
+  Dependent latency        0.08 GB/s        9.59 Mops/s  weight=0.25  (104.25 ns/access)
 ```
 
 上述数字是开发机示例，不是参考硬件排名。固定评分规格为：
@@ -59,7 +69,6 @@ Score = exp(Σ weight_i × ln(rate_i))
 ./build/memorymark --score --json
 ./build/memorymark --score --csv
 ./build/memorymark --score --cpu-affinity 4
-./build/memorymark --score --details
 ./build/memorymark --score-quick --json
 ```
 
@@ -129,7 +138,6 @@ ASAN_OPTIONS=detect_leaks=1 UBSAN_OPTIONS=halt_on_error=1 \
 | `--help` / `--version` | | 帮助 / 版本 |
 | `--score` | 无参数时自动 | 运行固定 v3 加权评分套件；不能混入工作负载调优参数 |
 | `--score-quick` | | 运行不可比较的评分自测 profile，供 CTest/开发使用 |
-| `--details` | 关闭 | 与评分模式配合，在文本输出中列出八个加权分项 |
 | `--test` | `seq-read` | 详细模式：`seq-read`、`seq-write`、`mix`、`copy`、`triad`、`random-read`、`random-write`、`latency`、`all` |
 | `--size` | `8M` | **每线程**缓冲区大小，不是所有线程总和 |
 | `--threads` | `1` | 1 至 256 个线程，私有缓冲区 |
@@ -192,7 +200,7 @@ mix 是固定读前缀/写后缀的分块流，不是每个元素都先读再写
 
 ### 结果与校验
 
-默认文本评分只显示总分、稳定性、固定规格、sequence hash 和三个分组摘要。`--score --details` 再显示八个加权分项。`--score --json` 的顶层包含 `score`、`score_unit`、`status`、`verified`、`comparable`、aggregate `sequence_hash`、`max_variability`、`group_scores`、固定 `profile` 和 `components`。每项结果包含权重、分组、原始 Mops/s、GB/s、变异系数和独立 sequence hash；profile 记录三个分组权重以及 stream/latency 步长。CSV 使用对应列保存相同信息。详细模式的 JSON 与 CSV 保持原有逐轮和逐线程结构，不会把 MMark 总分混入自定义结果。
+默认文本评分显示总分、稳定性、固定规格、sequence hash、三个分组摘要，以及每个分组下的八个加权细分。`--score --json` 的顶层包含 `score`、`score_unit`、`status`、`verified`、`comparable`、aggregate `sequence_hash`、`max_variability`、`group_scores`、固定 `profile` 和 `components`。每项结果包含权重、分组、原始 Mops/s、GB/s、变异系数和独立 sequence hash；profile 记录三个分组权重以及 stream/latency 步长。CSV 使用对应列保存相同信息。详细模式的 JSON 与 CSV 保持原有逐轮和逐线程结构，不会把 MMark 总分混入自定义结果。
 
 `GB/s = 逻辑字节数 / 秒 / 10^9`，1 GB = 10^9 bytes；容量 K/M/G 按二进制。普通缓存写**不计入**写分配读、脏行回写、总线协议和额外索引流；屏障不保证数据已经写回 DRAM。小工作集报告的主要可能是 Cache 性能，不是真实 DRAM 总线流量。
 
