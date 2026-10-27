@@ -32,7 +32,7 @@ typedef struct {
     unsigned threads, repeat, read_ratio;
     uint64_t iterations, seed;
     double duration, warmup, scale;
-    int format, sweep, thread_sweep, score, cpus[MM_MAX_THREADS], ncpus;
+    int format, sweep, thread_sweep, score, quick, cpus[MM_MAX_THREADS], ncpus;
 } mm_config;
 typedef struct {
     uint64_t *data;
@@ -56,6 +56,7 @@ typedef struct {
 typedef struct {
     mm_test test;
     double gbps, ns_access, million_ops, cv;
+    uint64_t sequence_hash;
 } mm_score_component;
 typedef struct {
     char cpu_model[256];
@@ -69,9 +70,10 @@ typedef struct {
     mm_score_component components[MM_SCORE_COMPONENTS];
     size_t size, memory_limit, accesses;
     unsigned threads, repeat, read_ratio;
-    uint64_t seed;
+    uint64_t seed, sequence_hash;
     double duration, warmup, score, max_cv, elapsed;
-    int stable;
+    size_t latency_stride;
+    int stable, quick;
     const char *cpu;
     mm_system_info system;
 } mm_score_result;

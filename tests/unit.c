@@ -8,8 +8,10 @@ int main(void) {
     mm_config one;
     char *one_click[]={"memorymark"};
     char *score_json[]={"memorymark","--score","--json"};
+    char *score_quick[]={"memorymark","--score-quick","--json"};
     CHECK(mm_parse(1,one_click,&one)==0 && one.score==1);
     CHECK(mm_parse(3,score_json,&one)==0 && one.score==1 && one.format==1);
+    CHECK(mm_parse(3,score_quick,&one)==0 && one.score==1 && one.quick==1 && one.format==1);
     mm_collect_system_info(&info);
     CHECK(info.cpu_model[0] && info.kernel[0] && info.machine[0] && info.endianness[0]);
     CHECK(info.pointer_bits==(unsigned)(sizeof(void*)*8) && info.page_size>0);

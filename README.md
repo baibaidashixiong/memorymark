@@ -1,4 +1,4 @@
-# MemoryMark 1.1
+# MemoryMark 1.2
 
 MemoryMark 是 C11 内存子系统微基准工具。借鉴 CoreMark 的固定负载、重复测量和单一评分理念，提供一个默认可直接运行的 MemoryMark 分数，同时保留各分项结果以便解释和诊断。它不复用 CoreMark 的负载或评分规则。运行时不依赖第三方库，不需要管理员权限，不修改系统配置。
 
@@ -15,28 +15,30 @@ ctest --test-dir build --output-on-failure
 ./build/memorymark --test all --size 8M --duration 0.1 --repeat 3
 ```
 
-未指定构建类型时默认 Release。不带参数运行会执行固定评分套件，约需 15 至 30 秒，结束时先显示分数和稳定性，再显示六项分项。评分至少需要 192 MiB 内存预算；默认预算为 1 GiB。显式使用 `--test` 时进入高级诊断模式，不会生成总分。默认诊断测试为单线程顺序读、每线程 8 MiB、3 轮、每轮目标 0.1 秒。Python 3 只用于集成测试；没有 Python 时 CMake 会跳过集成测试，仍可构建工具和 C 单元测试。
+未指定构建类型时默认 Release。不带参数运行会执行固定评分套件，约需 20 至 35 秒，结束时先显示分数和稳定性，再显示六项分项。评分至少需要 256 MiB 内存预算；默认预算为 1 GiB。显式使用 `--test` 时进入高级诊断模式，不会生成总分。默认诊断测试为单线程顺序读、每线程 8 MiB、3 轮、每轮目标 0.1 秒。Python 3 只用于集成测试；没有 Python 时 CMake 会跳过 Linux 集成测试，仍可构建工具和 C 单元测试。
 
 ## 一键评分
 
 ```text
-MemoryMark Score: 546.3 MMark
-Status: STABLE (max variability 1.3%, verification PASSED)
-Profile: fixed-v1 | 1 thread | 128 MiB/thread | 8M accesses/pass | 0.5 s x 3 | warm 0.1 s
+MemoryMark Score: 536.3 MMark
+Status: STABLE (max variability 1.7%, verification PASSED)
+Profile: fixed-v2 | 1 thread | 128 MiB/thread | 8388608 accesses/pass | 0.50 s x 5 | warm 0.10 s
+Sequence: aggregate=7e355b845c935c93 | stream-stride=8 | latency-stride=64
 
-Sequential read         50.29 GB/s     6286.44 Mops/s
-Sequential write        28.31 GB/s     3538.57 Mops/s
-70/30 read/write        37.49 GB/s     4685.89 Mops/s
-Random read              1.40 GB/s      174.46 Mops/s
-Random write             1.17 GB/s      146.71 Mops/s
-Dependent latency        0.08 GB/s        9.96 Mops/s  (100.37 ns/access)
+Sequential read         49.26 GB/s     6156.98 Mops/s
+Sequential write        27.95 GB/s     3493.35 Mops/s
+70/30 read/write        36.77 GB/s     4596.38 Mops/s
+Random read              1.37 GB/s      171.53 Mops/s
+Random write             1.17 GB/s      146.08 Mops/s
+Dependent latency        0.08 GB/s        9.61 Mops/s  (104.09 ns/access)
 ```
 
 上述数字是开发机示例，不是参考硬件排名。固定评分规格为：
 
-- 单工作线程、每项 128 MiB 工作集、步长 8 字节、seed=1。
+- 单工作线程、每项 128 MiB 工作集、stream/random 步长 8 字节、seed=1。
+- 依赖式指针追逐使用 64 字节链步长，减少同一 Cache line 内多节点混入延迟。
 - 随机读、随机写和指针追逐每遍 8,388,608 次访问（8M）；顺序和 mix 访问全部槽。
-- 每项预热至少 0.1 秒，正式目标 0.5 秒，共 3 个测量轮。
+- 每项预热至少 0.1 秒，正式目标 0.5 秒，共 5 个测量轮。
 - 顺序读、顺序写、70/30 mix、随机读、随机写、依赖式指针追逐共 6 项。
 - 所有项均通过计时外数据验证；任一项验证、分配、线程或计时失败则不给分。
 
@@ -54,9 +56,12 @@ Score = (read × write × mix × random_read × random_write × latency_rate)^(1
 ./build/memorymark --score --json
 ./build/memorymark --score --csv
 ./build/memorymark --score --cpu-affinity 4
+./build/memorymark --score-quick --json
 ```
 
 评分模式只接受输出、`--memory-limit` 和最多一个 CPU 亲和性参数；不能混入 `--test`、`--size`、`--duration` 等工作负载参数，否则退出码为 2。这是为了确保所有 MMark 使用相同规格。需要自定义测试规模和多线程信息时使用详细模式。
+
+`--score-quick` 是 CI/开发用短 profile：16 MiB、2 轮、较小访问量，约 1 秒完成。它的 JSON/CSV 明确标记 `comparable=false`，不得用于机器横向比较。正式 MMark 始终使用完整的 `memorymark-v2` profile。v2 与早期 v1 的轮数和延迟链步长不同，分数不可直接比较。
 
 评分和详细结果的文本、JSON、CSV 都包含架构快照：
 
@@ -119,6 +124,7 @@ ASAN_OPTIONS=detect_leaks=1 UBSAN_OPTIONS=halt_on_error=1 \
 |---|---|---|
 | `--help` / `--version` | | 帮助 / 版本 |
 | `--score` | 无参数时自动 | 运行固定 v1 评分套件；不能混入工作负载调优参数 |
+| `--score-quick` | | 运行不可比较的评分自测 profile，供 CTest/开发使用 |
 | `--test` | `seq-read` | 详细模式：`seq-read`、`seq-write`、`mix`、`random-read`、`random-write`、`latency`、`all` |
 | `--size` | `8M` | **每线程**缓冲区大小，不是所有线程总和 |
 | `--threads` | `1` | 1 至 256 个线程，私有缓冲区 |
@@ -159,7 +165,7 @@ Linux 内存 overcommit 和外部 OOM killer 不受普通用户态分配器控�
 
 随机数使用定义明确的 SplitMix64，无偏拒绝采样映射至槽范围。线程种子由基础 seed 和线程编号确定；随机地址序列在**相同工作集、步长、accesses、seed、线程编号和 size_t 宽度**下可复现。不同轮重复同一地址序列，这意味着地址索引数组本身也会缓存。索引流读取带来额外带宽与 Cache 压力，但不计入主数据逻辑字节数；不能将该测试当作无软件开销的硬件随机访问能力。
 
-指针追逐使用 Fisher-Yates 随机排列，将排列相邻槽连接，末尾回到开头；从槽 0 沿链验证恰好 count 次后才首次回到 0。构建排列临时数组在计时前释放，正式循环不产生随机数。默认 stride=8 会在一条 Cache line 内放置多个节点；用 stride=64 可减少同一行多节点效应，但 64 只是用户选择，不是假设所有平台 Cache line 一定为 64。
+指针追逐使用 Fisher-Yates 随机排列，将排列相邻槽连接，末尾回到开头；从槽 0 沿链验证恰好 count 次后才首次回到 0。构建排列临时数组在计时前释放，正式循环不产生随机数。详细模式默认 stride=8；固定评分对延迟链使用 64 字节步长，以减少同一 Cache line 内多节点效应。64 只是明确记录的 profile 参数，不是假设所有平台 Cache line 一定为 64。
 
 mix 是固定读前缀/写后缀的分块流，不是每个元素都先读再写，也不是随机概率分支；70/30 在完整 100 槽块上是精确比例。每次读或写均按 8 字节计算，50/50 不会被当成 16 字节处理量。
 
@@ -179,7 +185,7 @@ mix 是固定读前缀/写后缀的分块流，不是每个元素都先读再写
 
 ### 结果与校验
 
-默认文本评分把总分、稳定性、固定规格和六个分项放在同一屏内。`--score --json` 的顶层包含 `score`、`score_unit`、`status`、`verified`、`max_variability`、固定 `profile` 和 `components`；CSV 写一行六项汇总。详细模式的 JSON 与 CSV 保持原有逐轮和逐线程结构，不会把 MMark 总分混入自定义结果。
+默认文本评分把总分、稳定性、固定规格、sequence hash 和六个分项放在同一屏内。`--score --json` 的顶层包含 `score`、`score_unit`、`status`、`verified`、`comparable`、aggregate `sequence_hash`、`max_variability`、固定 `profile` 和 `components`。每项结果包含独立 sequence hash；profile 分别记录 stream 和 latency 步长。CSV 使用对应列保存相同信息。详细模式的 JSON 与 CSV 保持原有逐轮和逐线程结构，不会把 MMark 总分混入自定义结果。
 
 `GB/s = 逻辑字节数 / 秒 / 10^9`，1 GB = 10^9 bytes；容量 K/M/G 按二进制。普通缓存写**不计入**写分配读、脏行回写、总线协议和额外索引流；屏障不保证数据已经写回 DRAM。小工作集报告的主要可能是 Cache 性能，不是真实 DRAM 总线流量。
 
@@ -205,6 +211,7 @@ JSON 顶层为 `schema_version` 和 `results`，每项有配置、编译器、OS
 ./build/memorymark
 ./build/memorymark --score --json > score.json
 ./build/memorymark --score --csv > score.csv
+./build/memorymark --score-quick --json
 
 # 常规顺序带宽
 ./build/memorymark --test seq-read --size 32M --duration 0.5 --repeat 5
@@ -248,6 +255,6 @@ JSON 顶层为 `schema_version` 和 `results`，每项有配置、编译器、OS
 
 `include/mm.h` 为公共接口。`cli.c` 负责解析和边界；`timer.c`、`platform.c` 隔离平台；`memory.c` 管理工作集、随机数、地址数组和环；三个 bench 内核文件实现访问；`bench_parallel.c` 管理线程、阶段同步、验证及统计；`main.c` 扫描并处理退出码；`output.c` 提供三种输出。
 
-`tests/unit.c` 测容量溢出、统计、已知随机数向量、固定种子、地址范围、不同步长的完整环及损坏环。`tests/integration.py` 实际启动程序，覆盖全部模式/比例、8 字节和 64 MiB×2、三线程、两种扫描、真实时长、CPU 亲和性、JSON/CSV 解析及各类非法参数。测试使用显式 CHECK 而非可被 Release 的 NDEBUG 消除的 assert。
+`tests/unit.c` 测容量溢出、统计、已知随机数向量、固定种子、地址范围、不同步长的完整环及损坏环。`tests/integration.py` 实际启动程序，覆盖全部模式/比例、8 字节和 64 MiB×2、三线程、两种扫描、真实时长、CPU 亲和性、JSON/CSV 解析及各类非法参数。`tests/score_smoke.py` 使用 quick profile 验证六项评分、几何平均、逐项/聚合 sequence hash、CSV 和不可比较标记。C 测试使用显式 CHECK，评分 smoke 使用显式失败函数。
 
 验证结果及实际命令见 [TESTING.md](TESTING.md)。

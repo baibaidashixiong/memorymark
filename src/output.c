@@ -94,38 +94,39 @@ static const char *score_label(mm_test t) {
 }
 void mm_score_output(const mm_config *c,const mm_score_result *r) {
     if (c->format==1) {
-        printf("{\"schema_version\":2,\"score_version\":1,\"tool\":\"MemoryMark\",\"tool_version\":\"%s\",\"os\":\"%s\",\"arch\":\"%s\",\"compiler\":",MM_VERSION,mm_os(),mm_arch());
+        printf("{\"schema_version\":2,\"score_version\":2,\"tool\":\"MemoryMark\",\"tool_version\":\"%s\",\"os\":\"%s\",\"arch\":\"%s\",\"compiler\":",MM_VERSION,mm_os(),mm_arch());
         quoted(mm_compiler());
         printf(",\"architecture\":"); system_json(&r->system);
-        printf(",\"build\":\"%s\",\"score\":%.9g,\"score_unit\":\"million_logical_accesses_per_second_geometric_mean\",\"status\":\"%s\",\"verified\":true,\"max_variability\":%.9g,\"elapsed_seconds\":%.9g,\"profile\":{\"name\":\"memorymark-v1\",\"size_per_thread\":%zu,\"accesses_per_pass\":%zu,\"threads\":%u,\"duration_per_component\":%.9g,\"warmup\":%.9g,\"repeat\":%u,\"seed\":%" PRIu64 ",\"mix_read_ratio\":%u,\"stride\":8,\"traffic\":\"logical_8_byte_accesses\",\"cache_policy\":\"warm_no_flush\"},\"cpu_affinity\":[",MM_BUILD,r->score,r->stable?"stable":"unstable",r->max_cv,r->elapsed,r->size,r->accesses,r->threads,r->duration,r->warmup,r->repeat,r->seed,r->read_ratio);
+        printf(",\"build\":\"%s\",\"score\":%.9g,\"score_unit\":\"million_logical_accesses_per_second_geometric_mean\",\"status\":\"%s\",\"verified\":true,\"comparable\":%s,\"sequence_hash\":\"%016" PRIx64 "\",\"max_variability\":%.9g,\"elapsed_seconds\":%.9g,\"profile\":{\"name\":\"%s\",\"size_per_thread\":%zu,\"accesses_per_pass\":%zu,\"threads\":%u,\"duration_per_component\":%.9g,\"warmup\":%.9g,\"repeat\":%u,\"seed\":%" PRIu64 ",\"mix_read_ratio\":%u,\"stream_stride\":8,\"latency_stride\":%zu,\"traffic\":\"logical_8_byte_accesses\",\"cache_policy\":\"warm_no_flush\"},\"cpu_affinity\":[",MM_BUILD,r->score,r->stable?"stable":"unstable",r->quick?"false":"true",r->sequence_hash,r->max_cv,r->elapsed,r->quick?"memorymark-quick-v2":"memorymark-v2",r->size,r->accesses,r->threads,r->duration,r->warmup,r->repeat,r->seed,r->read_ratio,r->latency_stride);
         for (int i=0;i<c->ncpus;++i) printf("%s%d",i?",":"",c->cpus[i]);
         printf("],\"components\":[");
         for (unsigned i=0;i<MM_SCORE_COMPONENTS;++i) {
             const mm_score_component *x=&r->components[i];
             if (i) putchar(',');
-            printf("{\"test\":\"%s\",\"gbps\":%.9g,\"million_ops_per_second\":%.9g,\"variability\":%.9g,\"ns_access\":",mm_test_name(x->test),x->gbps,x->million_ops,x->cv);
+            printf("{\"test\":\"%s\",\"gbps\":%.9g,\"million_ops_per_second\":%.9g,\"variability\":%.9g,\"sequence_hash\":\"%016" PRIx64 "\",\"ns_access\":",mm_test_name(x->test),x->gbps,x->million_ops,x->cv,x->sequence_hash);
             if (x->test==LATENCY) printf("%.9g",x->ns_access); else printf("null");
             putchar('}');
         }
         printf("]}\n");
     } else if (c->format==2) {
-        printf("score_version,tool_version,score,unit,status,max_variability,elapsed_seconds,"); csv_system_header();
+        printf("score_version,tool_version,score,unit,status,comparable,sequence_hash,stream_stride,latency_stride,max_variability,elapsed_seconds,"); csv_system_header();
         printf(",size_per_thread,accesses_per_pass,threads,duration,warmup,repeat,seed,mix_read_ratio,affinity");
-        for (unsigned i=0;i<MM_SCORE_COMPONENTS;++i) printf(",%s_gbps,%s_mops,%s_variability,%s_ns_access",mm_test_name((mm_test)i),mm_test_name((mm_test)i),mm_test_name((mm_test)i),mm_test_name((mm_test)i));
-        printf("\n1,%s,%.9g,MMark,%s,%.9g,%.9g,",MM_VERSION,r->score,r->stable?"stable":"unstable",r->max_cv,r->elapsed);
+        for (unsigned i=0;i<MM_SCORE_COMPONENTS;++i) printf(",%s_gbps,%s_mops,%s_variability,%s_sequence_hash,%s_ns_access",mm_test_name((mm_test)i),mm_test_name((mm_test)i),mm_test_name((mm_test)i),mm_test_name((mm_test)i),mm_test_name((mm_test)i));
+        printf("\n2,%s,%.9g,MMark,%s,%s,%016" PRIx64 ",8,%zu,%.9g,%.9g,",MM_VERSION,r->score,r->stable?"stable":"unstable",r->quick?"false":"true",r->sequence_hash,r->latency_stride,r->max_cv,r->elapsed);
         csv_system_values(&r->system);
         printf(",%zu,%zu,%u,%.9g,%.9g,%u,%" PRIu64 ",%u,",r->size,r->accesses,r->threads,r->duration,r->warmup,r->repeat,r->seed,r->read_ratio);
         affinity(c);
         for (unsigned i=0;i<MM_SCORE_COMPONENTS;++i) {
             const mm_score_component *x=&r->components[i];
-            printf(",%.9g,%.9g,%.9g,",x->gbps,x->million_ops,x->cv);
+            printf(",%.9g,%.9g,%.9g,%016" PRIx64 ",",x->gbps,x->million_ops,x->cv,x->sequence_hash);
             if (x->test==LATENCY) printf("%.9g",x->ns_access);
         }
         putchar('\n');
     } else {
         printf("MemoryMark Score: %.1f MMark\n",r->score);
         printf("Status: %s (max variability %.1f%%, verification PASSED)\n",r->stable?"STABLE":"UNSTABLE",r->max_cv*100);
-        printf("Profile: fixed-v1 | %u thread | %zu MiB/thread | %zuM accesses/pass | %.1f s x %u | warm %.1f s\n",r->threads,r->size/(1024*1024),r->accesses/(1024*1024),r->duration,r->repeat,r->warmup);
+        printf("Profile: %s | %u thread | %zu MiB/thread | %zu accesses/pass | %.2f s x %u | warm %.2f s\n",r->quick?"quick-diagnostic-v2":"fixed-v2",r->threads,r->size/(1024*1024),r->accesses,r->duration,r->repeat,r->warmup);
+        printf("Sequence: aggregate=%016" PRIx64 " | stream-stride=%zu | latency-stride=%zu\n",r->sequence_hash,(size_t)8,r->latency_stride);
         printf("Environment: %s %s | %s | %s",mm_os(),mm_arch(),mm_compiler(),MM_BUILD);
         if (c->ncpus) { printf(" | CPU "); affinity(c); }
         printf("\n\n");
@@ -138,7 +139,8 @@ void mm_score_output(const mm_config *c,const mm_score_result *r) {
             putchar('\n');
         }
         printf("\nTotal run: %.1f s | Score = geometric mean of six million-access rates\n",r->elapsed);
-        printf("Compare only MemoryMark %s results from the same build type and idle system.\n",MM_VERSION);
+        if (r->quick) printf("Quick profile is for diagnostics only; do not compare its score across machines.\n");
+        else printf("Compare only MemoryMark %s results from the same build type and idle system.\n",MM_VERSION);
     }
 }
 static void csv_row(const mm_config *c,const mm_result *r,unsigned round,int worker,const mm_sample *s,const mm_system_info *info) {

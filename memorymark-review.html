@@ -109,13 +109,13 @@
       <p class="eyebrow">Independent review · GPT sub-agent + local audit</p>
       <h1>MemoryMark 现在够用，但一键分数还不能代表整台机器的内存性能</h1>
       <p class="lede">基础访问内核、误差传播、随机环验证和多线程隔离已经有不错的工程基础。下一阶段应先修正评分边界与结果语义，再扩大测试模式；继续增加模式数量不是当前最高收益。</p>
-      <div class="meta"><span>审查日期 2026-10-27</span><span>版本 1.1.0</span><span>Linux x86_64</span><span>CTest 2/2 通过</span></div>
+      <div class="meta"><span>审查日期 2026-10-27</span><span>版本 1.2.0</span><span>Linux x86_64</span><span>CTest 3/3 通过</span></div>
     </div>
   </header>
 
   <div class="tldr shell">
     <strong>结论先行</strong>
-    <p>最值得做的是：修正评分内存下限、给多线程结果明确计时语义、把 128 MiB 评分为“warm logical-access score”并增加 DRAM 导向档案、把评分纳入自动化测试。随后再补 Copy/Triad、TLB sweep、多链延迟、固定总工作集、NUMA 与流式写。</p>
+    <p>第一批修复已经完成：评分下限改为 256 MiB、延迟链独立使用 64 字节步长、正式评分改为 5 轮、评分 quick smoke 与地址哈希进入 CTest。下一阶段最值得做的是明确多线程计时语义、把 128 MiB 评分为 warm logical-access score、补环境和编译指纹，再扩展 Copy/Triad、TLB sweep、多链延迟、NUMA 与流式写。</p>
   </div>
 
   <nav aria-label="页面导航">
@@ -137,17 +137,17 @@
           <span class="phase-label p0">PHASE 1 · 先修语义</span>
           <h3>评分可信度</h3>
           <ul>
-            <li>最低预算改为 256 MiB</li>
-            <li>延迟链改用 64 字节节点步长</li>
+            <li>已完成：最低预算改为 256 MiB</li>
+            <li>已完成：延迟链改用 64 字节节点步长</li>
             <li>采集 CPU、内核、编译参数与实际 CPU</li>
-            <li>增加评分路径 CTest</li>
+            <li>已完成：增加 quick 评分路径 CTest</li>
           </ul>
         </div>
         <div class="phase">
           <span class="phase-label p1">PHASE 2 · 提升解释力</span>
           <h3>统计与并行</h3>
           <ul>
-            <li>5 轮样本、分位数和 MAD</li>
+            <li>已完成：5 轮样本；仍需分位数和 MAD</li>
             <li>输出线程起跑偏斜与活跃区间</li>
             <li>拆分 streaming / random-latency 指数</li>
             <li>增加 Copy、Triad、TLB、多链</li>
@@ -177,9 +177,9 @@
       </div>
 
       <article class="finding" data-priority="p0">
-        <div class="finding-head"><h3>评分最低内存限制与延迟测试实际需求不一致</h3><span class="tag p0">P0 · 必须修</span></div>
-        <p class="evidence">参数层接受 <code>192M</code>，但延迟测试同时保留 128 MiB 数据区和 128 MiB 排列数组，实际至少需要 256 MiB。结果会在完成多个项目后才在 latency 项失败。依据：<code>src/cli.c:143</code>、<code>src/memory.c:26</code>、<code>src/memory.c:28</code>、<code>src/bench_parallel.c:112</code>。</p>
-        <p class="action"><b>建议</b>把评分下限改为 256 MiB，并添加 255/256 MiB 边界测试。更长期可以设计低峰值环构建，但不应阻塞当前修复。</p>
+        <div class="finding-head"><h3>评分最低内存限制已与延迟测试需求对齐</h3><span class="tag p2">已修复</span></div>
+        <p class="evidence">评分下限现为 256 MiB；255 MiB 在参数阶段失败，256 MiB 进入 quick smoke。128 MiB 数据区和 128 MiB 排列数组的峰值需求已由所有构建矩阵验证。</p>
+        <p class="action"><b>后续</b>可设计低峰值环构建以降低 256 MiB 下限，但当前行为已经自洽。</p>
       </article>
 
       <article class="finding" data-priority="p0">
@@ -195,15 +195,15 @@
       </article>
 
       <article class="finding" data-priority="p0">
-        <div class="finding-head"><h3>三轮 CV 不足以支撑 STABLE 标签</h3><span class="tag p0">P0 · 统计</span></div>
-        <p class="evidence">评分只采 3 轮，用标准差/均值阈值 10% 判断稳定。三点很难区分偶发抢占、热降频与真实分布。依据：<code>src/score.c:21</code>、<code>src/score.c:37</code>、<code>src/score.c:45</code>。</p>
-        <p class="action"><b>建议</b>使用至少 5 轮，报告 median、MAD/IQR 与原始轮次；稳定性标签只描述本次样本内波动，不暗示系统处在理想状态。</p>
+        <div class="finding-head"><h3>评分样本数已提升到 5 轮</h3><span class="tag p2">部分完成</span></div>
+        <p class="evidence">正式评分现在采集 5 轮，用标准差/均值阈值 10% 判断稳定性。仍有改进空间：尚未输出 MAD/IQR 和原始分项轮次。</p>
+        <p class="action"><b>后续</b>增加 median、MAD/IQR，并让稳定性标签只描述样本内波动。</p>
       </article>
 
       <article class="finding" data-priority="p1">
-        <div class="finding-head"><h3>延迟评分使用 8 字节步长，节点会密集落在同一缓存行</h3><span class="tag p1">P1 · 算法</span></div>
-        <p class="evidence">评分档案对六项统一设置 <code>stride=8</code>，指针链节点因此每行多个，延迟混入同一 Cache line 命中与局部访问效应。依据：<code>src/score.c:22</code>、<code>src/memory.c:31</code>。</p>
-        <p class="action"><b>建议</b>仅对 latency 使用独立固定步长，例如 64 字节，并在 profile 中分别记录 streaming/random/latency stride；不要把 64 写死为对未知 Cache line 的硬件假设。</p>
+        <div class="finding-head"><h3>延迟评分已使用独立 64 字节链步长</h3><span class="tag p2">已修复</span></div>
+        <p class="evidence">正式 profile 现在分别记录 <code>stream_stride=8</code> 与 <code>latency_stride=64</code>；JSON、CSV 和文本均输出该信息。详细诊断模式仍允许用户选择步长。</p>
+        <p class="action"><b>后续</b>可在 profile 中增加多步长延迟扫描，而不是继续扩展单一固定值。</p>
       </article>
 
       <article class="finding" data-priority="p1">
@@ -213,9 +213,9 @@
       </article>
 
       <article class="finding" data-priority="p1">
-        <div class="finding-head"><h3>评分没有进入常规 CTest，地址序列也没有评分级哈希</h3><span class="tag p1">P1 · 测试</span></div>
-        <p class="evidence">CTest 只跑很小的详细模式，<code>--score</code> 仅测试非法参数；完整评分是手工烟雾测试。评分 JSON 的分项也不展示每项 sequence hash。依据：<code>tests/integration.py:23</code>、<code>tests/integration.py:77</code>、<code>tests/unit.c</code>。</p>
-        <p class="action"><b>建议</b>增加测试专用短评分 profile，不改变发布 v1；验证六项、有限值、几何平均重算、固定字段、JSON/CSV 和地址哈希。发布评分记录每项 sequence hash。</p>
+        <div class="finding-head"><h3>评分 quick smoke 与地址哈希已进入 CTest</h3><span class="tag p2">已修复</span></div>
+        <p class="evidence">CTest 新增 <code>score-smoke</code>，使用不可比较的 quick profile 验证六项、几何平均、JSON/CSV、profile 字段和逐项/聚合 sequence hash。正式评分仍通过手工长测试验收。</p>
+        <p class="action"><b>后续</b>可增加可选的长评分夜间测试，但不应让每次 CI 都固定运行 25 秒以上。</p>
       </article>
 
       <article class="finding" data-priority="p1">
@@ -301,8 +301,8 @@
         <div>
           <h3>各自补充</h3>
           <ul>
-            <li>子代理首先发现评分 192/256 MiB 自相矛盾，以及并行完成吞吐语义。</li>
-            <li>本地审查补充了评分 latency stride=8、评分序列哈希缺失、固定值和 Python assert 风险。</li>
+            <li>子代理首先发现评分 192/256 MiB 自相矛盾，以及并行完成吞吐语义；前者已修复。</li>
+            <li>本地审查补充了评分 latency stride=8、评分序列哈希缺失、固定值和 Python assert 风险；前三项已完成主要修复。</li>
             <li>最终顺序统一为：正确性 → 评分自动化/元数据 → 统计与并行语义 → 新工作负载 → NUMA/平台。</li>
           </ul>
         </div>
@@ -323,10 +323,8 @@
       <h2>建议下一批改动</h2>
       <div class="next">
         <ol>
-          <li><b>修正评分边界：</b>192 MiB → 256 MiB，补 255/256 MiB 边界测试。</li>
-          <li><b>修评分物理含义：</b>latency 单独使用 64 字节步长；把 profile 标为 warm、residency unknown。</li>
+          <li><b>已完成：</b>评分边界改为 256 MiB，延迟独立 64 字节步长，5 轮统计，quick score smoke 和评分级哈希。</li>
           <li><b>补环境指纹：</b>CPU 型号、内核、LLC、实际执行 CPU、完整编译 flags、THP/NUMA 可检测项。</li>
-          <li><b>补 score smoke：</b>测试专用短 profile，验证六项、formula、JSON/CSV、sequence hash 和固定字段。</li>
           <li><b>再改并行计时：</b>记录每线程 start/end，输出起跑偏斜与重叠率，明确 completion throughput。</li>
           <li><b>提升统计：</b>至少 5 个评分轮次，加入 MAD/IQR 与分组指数。</li>
           <li><b>扩模式：</b>Copy/Triad → TLB sweep → 多链 chasing → 固定总工作集并行分片。</li>
@@ -336,7 +334,7 @@
   </main>
 
   <footer>
-    <div class="shell">审查基于当前工作区源码与文档。本次只生成报告，未修改测试实现；CTest 当前结果仍为 2/2 通过。</div>
+    <div class="shell">审查基于当前工作区源码与文档。第一批修复已经落地；六套 Linux 配置的 CTest 均为 3/3 通过，Windows 交叉构建生成 PE32+。</div>
   </footer>
 
   <script>
