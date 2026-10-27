@@ -12,6 +12,7 @@
 | build-sanitize | Clang Debug + ASan/UBSan | CTest 2/2，通过；集成 53 个进程，无 sanitizer/泄漏报告 |
 | build-tsan | Clang Debug + TSan | CTest 2/2，通过；集成 53 个进程，无数据竞争报告 |
 | build-cmake313 | GCC Release，CMake 3.13.4 | `cmake ..` 配置、编译及 CTest 2/2 通过 |
+| build-windows-toolchain | MinGW-w64 GCC 16 Release | 生成 x86_64 PE32+ `memorymark.exe`/`mm_unit.exe`；仅依赖 KERNEL32/msvcrt |
 
 普通构建额外使用 Linux RLIMIT_AS 限制子进程地址空间，验证分配失败返回 1 并清理退出。Sanitizer 运行跳过该用例，因为其运行时需要预留大型虚拟地址空间。TSan 通过不构成对所有可能并发执行的形式证明。
 

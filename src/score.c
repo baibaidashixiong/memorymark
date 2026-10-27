@@ -6,7 +6,7 @@ double mm_score_from_rates(const double *rates, unsigned n) {
     long double logs=0;
     if (!n) return 0;
     for (unsigned i=0;i<n;++i) {
-        if (!(rates[i]>0) || !isfinite(rates[i])) return 0;
+        if (!(rates[i]>0) || !mm_isfinite(rates[i])) return 0;
         logs+=logl((long double)rates[i]);
     }
     return (double)expl(logs/n);

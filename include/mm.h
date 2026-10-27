@@ -3,6 +3,14 @@
 #include <stddef.h>
 #include <stdint.h>
 #include <stdio.h>
+#include <math.h>
+static inline int mm_isfinite(double value) {
+#if defined(__GNUC__) || defined(__clang__)
+    return __builtin_isfinite(value);
+#else
+    return isfinite(value);
+#endif
+}
 #ifdef _WIN32
 #include <windows.h>
 typedef HANDLE mm_thread;

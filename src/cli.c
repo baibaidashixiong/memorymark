@@ -46,7 +46,7 @@ int mm_size(const char *s, size_t *v) {
 static int real_value(const char *s, double *v) {
     char *end;
     errno = 0; *v = strtod(s,&end);
-    return !*s || *end || errno || !isfinite(*v) ? -1 : 0;
+    return !*s || *end || errno || !mm_isfinite(*v) ? -1 : 0;
 }
 void mm_help(void) {
     puts("MemoryMark " MM_VERSION " - logical memory traffic benchmark\n"

@@ -67,6 +67,29 @@ Score = (read × write × mix × random_read × random_write × latency_rate)^(1
 
 Linux 通过 `uname`、`/proc/cpuinfo`、`sysconf`、CPU affinity 和 sysfs 尽力采集；Windows 使用系统 API 与 `PROCESSOR_IDENTIFIER`。手工指定 affinity 时，“allowed CPUs”仍表示进程可用的 CPU 集合，而不是绑核列表；绑核列表位于 `cpu_affinity`。无法检测的缓存容量、NUMA 节点或平台字段输出为 `null`/`unknown`，不会导致基准测试失败。这些字段描述运行环境，不会被解释为实际 DRAM 流量或 NUMA 页落点验证。
 
+### Windows 交叉编译
+
+Linux 上的 MinGW-w64 交叉工具链会生成静态链接 MinGW 运行库的 64 位控制台程序，只依赖 Windows 自带的 `KERNEL32.dll` 和 `msvcrt.dll`：
+
+```sh
+cmake -S . -B build-windows -DCMAKE_TOOLCHAIN_FILE=cmake/toolchains/mingw64.cmake \
+  -DCMAKE_BUILD_TYPE=Release
+cmake --build build-windows -j
+file build-windows/bin/memorymark.exe
+```
+
+产物为 `build-windows/bin/memorymark.exe` 和 `build-windows/bin/mm_unit.exe`。可在 Windows 或 Wine 中运行：
+
+```sh
+wine build-windows/bin/mm_unit.exe
+wine build-windows/bin/memorymark.exe --help
+wine build-windows/bin/memorymark.exe --test all --size 4M --warmup 0 --repeat 1 \
+  --iterations 1
+wine build-windows/bin/memorymark.exe --score --json
+```
+
+首次使用 Wine 会创建用户级 `WINEPREFIX`。Wine 中的 CPU affinity、NUMA、QPC 精度和内存性能受 Wine/宿主 Linux 映射影响；这些结果验证 Windows 程序路径，不应作为原生 Windows 硬件排名。固定评分会分配约 128 MiB 数据区，并可能为随机/指针测试分配辅助数组，因此建议使用 64 位 Wine。没有 Wine 时仍可完成交叉编译和 PE 依赖检查，但不能宣称已完成 Windows 运行验证。
+
 ```sh
 # Debug
 cmake -S . -B build-debug -DCMAKE_BUILD_TYPE=Debug
