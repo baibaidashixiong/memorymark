@@ -109,7 +109,7 @@
       <p class="eyebrow">Independent review · GPT sub-agent + local audit</p>
       <h1>MemoryMark 现在够用，但一键分数还不能代表整台机器的内存性能</h1>
       <p class="lede">基础访问内核、误差传播、随机环验证和多线程隔离已经有不错的工程基础。下一阶段应先修正评分边界与结果语义，再扩大测试模式；继续增加模式数量不是当前最高收益。</p>
-      <div class="meta"><span>审查日期 2026-10-27</span><span>版本 1.3.1</span><span>Linux x86_64</span><span>CTest 3/3 通过</span></div>
+      <div class="meta"><span>审查日期 2026-10-27</span><span>版本 1.4.0</span><span>Linux x86_64</span><span>CTest 4/4 通过</span></div>
     </div>
   </header>
 
@@ -280,6 +280,7 @@
           <tr><td>依赖延迟</td><td>完整环和损坏环测试充分；评分使用 64 字节链步长</td><td>仅单链，无 MLP 扫描</td></tr>
           <tr><td>工作集扫描</td><td>倍增/线性及预算失败已测</td><td>没有自动关联 Cache/TLB/页大小拐点</td></tr>
           <tr><td>多线程</td><td>私有工作集、TSan、逐线程计数已测</td><td>完成吞吐而非重叠窗口；无私有多核拓扑对照</td></tr>
+          <tr><td>多进程足迹</td><td>fork/worker 线程、私有/共享内存、IPC 唤醒、PSS/RSS、栈驻留、RLIMIT 和容量 sweep 已实现</td><td>Linux-only；尚未加入 NUMA placement 与 cgroup memory.peak</td></tr>
           <tr><td>一键评分</td><td>单总分、三分组、公开权重、地址哈希、quick CTest 已完成</td><td>仍需实际 CPU/编译 flags、MAD/IQR 和长期漂移测试</td></tr>
           <tr><td>NUMA/流式写</td><td>明确未实现</td><td>需作为高级可选模式，而非基础分的一部分</td></tr>
           <tr><td>跨平台</td><td>Linux GCC/Clang 实测</td><td>Windows、ARM、其他 Unix 无 CI 覆盖</td></tr>

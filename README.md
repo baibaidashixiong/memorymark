@@ -1,4 +1,4 @@
-# MemoryMark 1.3
+# MemoryMark 1.4
 
 MemoryMark 是 C11 内存子系统微基准工具。借鉴 CoreMark 的固定负载、重复测量和单一评分理念，提供一个默认可直接运行的 MemoryMark 分数，同时保留各分项结果以便解释和诊断。它不复用 CoreMark 的负载或评分规则。运行时不依赖第三方库，不需要管理员权限，不修改系统配置。
 
@@ -85,6 +85,37 @@ Score = exp(Σ weight_i × ln(rate_i))
 
 Linux 通过 `uname`、`/proc/cpuinfo`、`sysconf`、CPU affinity 和 sysfs 尽力采集；Windows 使用系统 API 与 `PROCESSOR_IDENTIFIER`。手工指定 affinity 时，“allowed CPUs”仍表示进程可用的 CPU 集合，而不是绑核列表；绑核列表位于 `cpu_affinity`。无法检测的缓存容量、NUMA 节点或平台字段输出为 `null`/`unknown`，不会导致基准测试失败。这些字段描述运行环境，不会被解释为实际 DRAM 流量或 NUMA 页落点验证。
 
+### 进程级内存基准
+
+`--process-bench` 测量独立进程数量增长时的资源开销，不参与 MMark 性能分。Linux 上父进程创建指定数量的 fork 子进程，每个子进程再创建额外 worker 线程；所有 worker 使用显式 `mmap` 栈和 guard page。
+
+```sh
+./build/memorymark --process-bench --processes 8 --threads-per-process 2 \
+  --size 4M --shared-size 16M --thread-stack 1M --iterations 1 --json
+
+# 依次测试 1、2、4、8 个进程
+./build/memorymark --process-bench --process-sweep --processes 8 \
+  --threads-per-process 2 --size 4M --shared-size 16M \
+  --thread-stack 1M --iterations 1
+```
+
+每次 level 执行以下阶段：
+
+1. 父进程记录自身 PSS/RSS 基线，创建共享匿名映射和独立管道。
+2. fork 子进程；每个子进程创建指定数量的 worker 线程，线程映射指定大小的栈并进入 IPC 等待。
+3. 所有线程就绪后记录 idle PSS/RSS，用 `idle - baseline` 得到父进程加所有子进程的固定空闲开销。
+4. 父进程通过管道发送第一阶段唤醒；每个 worker 分配并首次触页自己的私有缓冲区，进程 0 号 worker 按互斥分区首次触页共享映射。
+5. 所有私有/共享页加载完成后记录 loaded PSS/RSS，然后父进程发送第二阶段唤醒，执行固定遍数私有和共享读取。
+6. 子进程返回 IPC 唤醒延迟、线程栈驻留 PSS、逻辑访问量和校验和；父进程等待并回收全部子进程。
+
+PSS/RSS 来自 Linux `/proc/<pid>/smaps_rollup`。聚合足迹是父进程与所有子进程 PSS/RSS 之和，因此共享页按 PSS 规则分摊，而不是把共享容量重复宣称为物理内存。`fixed_overhead_pss` 包含父进程新增状态、每个子进程及 worker 线程的固定成本；共享和私有内存工作集在 loaded 阶段单独体现。
+
+线程栈使用可控的 `mmap` 区域：`thread_stack` 表示每线程可用栈大小，额外一页作为不可访问 guard page。`threads_per_process` 只计额外 worker，不含子进程主线程。输出同时给出 reserve 虚拟栈容量和实际驻留 PSS；驻留值通常是少量已使用栈页，不等于完整栈容量。
+
+`--processes` 是安全上限，范围 1 至 64；sweep 使用 1、2、4...直到上限。若 fork、pipe 或线程创建在达到上限前失败，输出 `capacity_limited=true` 和实际 `created` 数量，并停止更高级 sweep。JSON 还报告 `RLIMIT_NPROC` 与 `RLIMIT_AS`；值为 0 表示无限。分配前使用 `--memory-limit` 对私有内存、共享内存和完整栈 reservation 做保守预算检查，避免无限创建。
+
+该模式目前仅在 Linux 实现。Windows 可交叉编译 CLI，但运行进程基准会明确报错；不使用虚假的 Windows PSS 实现。PSS/RSS 是容量验证指标，不是访存性能，不进入 MMark 加权总分。
+
 ### Windows 交叉编译
 
 Linux 上的 MinGW-w64 交叉工具链会生成静态链接 MinGW 运行库的 64 位控制台程序，只依赖 Windows 自带的 `KERNEL32.dll` 和 `msvcrt.dll`：
@@ -158,6 +189,12 @@ ASAN_OPTIONS=detect_leaks=1 UBSAN_OPTIONS=halt_on_error=1 \
 | `--memory-limit` | `1G` | 所有线程数据和地址/排列辅助数组的保守总预算 |
 | `--cpu-affinity` | `none` | CPU 编号列表，如 `2,4,6,8`；列表必须覆盖线程数 |
 | `--json` / `--csv` | 文本 | 互斥，机器可读标准输出 |
+| `--process-bench` | 关闭 | 运行 Linux 多进程/多线程 PSS、RSS、IPC 与容量基准 |
+| `--process-sweep` | 关闭 | 对进程数运行 1、2、4...扫描 |
+| `--processes` | `4` | 进程基准的最大独立进程数，1 至 64 |
+| `--threads-per-process` | `2` | 每个子进程额外 worker 线程数，1 至 64 |
+| `--shared-size` | `16M` | 全进程共享匿名映射大小 |
+| `--thread-stack` | `1M` | 每个 worker 的可用栈大小 |
 
 扫描最后总会包含 max；倍增结果向下对齐到 8 字节，若舍入无进展则增加 8 字节。每次规模都重新构建数据，不根据工作集大小硬编码任何 Cache 层级。若超出预算则失败退出，不会无限申请；提高预算之前应检查机器可用内存。
 
@@ -272,6 +309,6 @@ JSON 顶层为 `schema_version` 和 `results`，每项有配置、编译器、OS
 
 `include/mm.h` 为公共接口。`cli.c` 负责解析和边界；`timer.c`、`platform.c` 隔离平台；`memory.c` 管理工作集、随机数、地址数组和环；三个 bench 内核文件实现访问；`bench_parallel.c` 管理线程、阶段同步、验证及统计；`main.c` 扫描并处理退出码；`output.c` 提供三种输出。
 
-`tests/unit.c` 测容量溢出、统计、已知随机数向量、固定种子、地址范围、不同步长的完整环及损坏环。`tests/integration.py` 实际启动程序，覆盖全部八种模式/比例、Copy/Triad 的逻辑字节、8 字节和 64 MiB×2、三线程、两种扫描、真实时长、CPU 亲和性、JSON/CSV 解析及各类非法参数。`tests/score_smoke.py` 使用 quick profile 验证八项评分、公开权重、加权几何平均、三个分组分数、逐项/聚合 sequence hash、CSV 和不可比较标记。C 测试使用显式 CHECK，评分 smoke 使用显式失败函数。
+`tests/unit.c` 测容量溢出、统计、已知随机数向量、固定种子、地址范围、不同步长的完整环及损坏环。`tests/integration.py` 实际启动程序，覆盖全部八种模式/比例、Copy/Triad 的逻辑字节、8 字节和 64 MiB×2、三线程、两种扫描、真实时长、CPU 亲和性、JSON/CSV 解析及各类非法参数。`tests/score_smoke.py` 使用 quick profile 验证八项评分、公开权重、加权几何平均、三个分组分数、逐项/聚合 sequence hash、CSV 和不可比较标记。`tests/process_smoke.py` 在非 sanitizer Linux 构建中验证 fork/线程/IPC、PSS/RSS、栈驻留、CSV 和 1→2→4 容量扫描。C 测试与 Python smoke 均使用显式失败函数。
 
 验证结果及实际命令见 [TESTING.md](TESTING.md)。

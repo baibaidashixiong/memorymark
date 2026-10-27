@@ -26,15 +26,20 @@ typedef pthread_cond_t mm_cond;
 #define MM_MAX_REPEAT 100
 #define MM_SCORE_COMPONENTS 8
 #define MM_SCORE_GROUPS 3
+#define MM_MAX_PROCESSES 64
+#define MM_MAX_PROCESS_THREADS 64
 typedef enum { SEQ_READ, SEQ_WRITE, MIX, COPY, TRIAD, RANDOM_READ, RANDOM_WRITE, LATENCY, ALL } mm_test;
 typedef enum { GROUP_STREAM, GROUP_RANDOM, GROUP_LATENCY } mm_score_group;
 typedef struct {
     mm_test test;
     size_t size, stride, min_size, max_size, step, accesses, memory_limit;
+    size_t shared_size, thread_stack;
     unsigned threads, repeat, read_ratio;
+    unsigned processes, process_threads;
     uint64_t iterations, seed;
     double duration, warmup, scale;
-    int format, sweep, thread_sweep, score, quick, cpus[MM_MAX_THREADS], ncpus;
+    int format, sweep, thread_sweep, score, quick, process_bench, process_sweep;
+    int cpus[MM_MAX_THREADS], ncpus;
 } mm_config;
 typedef struct {
     uint64_t *data, *data2, *data3;
@@ -81,6 +86,29 @@ typedef struct {
     const char *cpu;
     mm_system_info system;
 } mm_score_result;
+typedef struct {
+    int pid, ok;
+    unsigned workers;
+    size_t private_bytes, shared_bytes;
+    size_t idle_pss, idle_rss, loaded_pss, loaded_rss;
+    size_t stack_reserved, stack_pss;
+    uint64_t accesses, checksum, iterations;
+    double wakeup_ms, work_seconds;
+} mm_process_result;
+typedef struct {
+    unsigned requested, created, threads_per_process;
+    size_t private_per_worker, shared_bytes, thread_stack;
+    uint64_t iterations;
+    size_t baseline_pss, baseline_rss;
+    size_t idle_pss, idle_rss, loaded_pss, loaded_rss;
+    size_t fixed_overhead_pss, stack_reserved, stack_pss;
+    size_t rlimit_nproc, rlimit_as;
+    uint64_t total_accesses;
+    double wakeup_min_ms, wakeup_median_ms, wakeup_max_ms;
+    double elapsed_seconds;
+    int capacity_limited, footprint_available;
+    mm_process_result *children;
+} mm_process_level;
 void mm_defaults(mm_config *c);
 int mm_parse(int argc, char **argv, mm_config *c);
 int mm_size(const char *s, size_t *value);
@@ -127,4 +155,9 @@ mm_stats mm_statistics(const double *v, unsigned n);
 void mm_output_begin(const mm_config *c);
 void mm_output(const mm_config *c, const mm_result *r, int first);
 void mm_output_end(const mm_config *c);
+int mm_run_process_level(const mm_config *c, unsigned processes, mm_process_level *result);
+void mm_process_level_free(mm_process_level *result);
+void mm_process_output_begin(const mm_config *c);
+void mm_process_output_level(const mm_config *c, const mm_process_level *result, int first);
+void mm_process_output_end(const mm_config *c);
 #endif

@@ -15,6 +15,8 @@ void mm_defaults(mm_config *c) {
     c->duration = .1; c->warmup = .02; c->scale = 2;
     c->min_size = 4096; c->max_size = 64*1024*1024;
     c->memory_limit = (size_t)1024*1024*1024;
+    c->processes=4; c->process_threads=2; c->shared_size=16*1024*1024;
+    c->thread_stack=1024*1024;
 }
 static int integer(const char *s, uint64_t *v) {
     char *end;
@@ -54,6 +56,7 @@ void mm_help(void) {
          "       memorymark --score [--json]       Same, with explicit mode/output\n"
          "       memorymark --score-quick           Fast diagnostic-only score smoke\n"
          "       memorymark --test TYPE [options] Run detailed diagnostics\n"
+         "       memorymark --process-bench         Multi-process footprint/IPC benchmark\n"
          "  --score             Fixed v3 profile: 1 thread, 128M/thread, 0.5s x 5\n"
          "  --score-quick       Diagnostic profile for CI, not for hardware comparison\n"
          "  --test seq-read|seq-write|mix|copy|triad|random-read|random-write|latency|all\n"
@@ -73,6 +76,12 @@ void mm_help(void) {
          "  --step SIZE         Linear sweep instead of multiplicative scale\n"
          "  --memory-limit 1G   Aggregate allocation budget incl. scratch\n"
          "  --cpu-affinity none|CPU,CPU,...  Explicit worker CPU list\n"
+         "  --process-bench     Private/shared memory + IPC process benchmark\n"
+         "  --process-sweep     Run process counts 1,2,4,... up to --processes\n"
+         "  --processes N       Maximum independent processes (1..64)\n"
+         "  --threads-per-process N  Worker threads per process (1..64)\n"
+         "  --shared-size SIZE  Shared mapping size for process benchmark\n"
+         "  --thread-stack SIZE Requested usable stack per worker (min OS limit)\n"
          "  --json | --csv      Machine-readable stdout (errors on stderr)\n"
          "  --help | --version\n"
          "Cached writes are NOT DRAM writeback; bandwidth is logical GB/s.\n"
@@ -81,6 +90,7 @@ void mm_help(void) {
 int mm_parse(int argc, char **argv, mm_config *c) {
     mm_defaults(c);
     int test_seen=0, score=argc==1, quick=0, profile_override=0;
+    int process_bench=0, process_sweep=0, process_invalid=0;
     for (int i=1; i<argc; ++i) {
         const char *k=argv[i], *v;
         uint64_t n;
@@ -88,12 +98,14 @@ int mm_parse(int argc, char **argv, mm_config *c) {
         if (!strcmp(k,"--version")) { puts("MemoryMark " MM_VERSION); return 1; }
         if (!strcmp(k,"--score")) { if (quick) goto invalid; score=1; continue; }
         if (!strcmp(k,"--score-quick")) { if (score) goto invalid; score=1; quick=1; continue; }
+        if (!strcmp(k,"--process-bench")) { process_bench=1; continue; }
+        if (!strcmp(k,"--process-sweep")) { process_sweep=1; continue; }
         if (!strcmp(k,"--json") || !strcmp(k,"--csv")) {
             if (c->format) goto invalid;
             c->format = !strcmp(k,"--json") ? 1 : 2; continue;
         }
-        if (!strcmp(k,"--sweep")) { c->sweep=1; profile_override=1; continue; }
-        if (!strcmp(k,"--thread-sweep")) { c->thread_sweep=1; profile_override=1; continue; }
+        if (!strcmp(k,"--sweep")) { c->sweep=1; profile_override=1; process_invalid=1; continue; }
+        if (!strcmp(k,"--thread-sweep")) { c->thread_sweep=1; profile_override=1; process_invalid=1; continue; }
         if (++i == argc) { fprintf(stderr,"Missing value for %s\n",k); return -1; }
         v=argv[i];
         if (!strcmp(k,"--test")) {
@@ -102,21 +114,26 @@ int mm_parse(int argc, char **argv, mm_config *c) {
             if (!found) goto invalid;
             test_seen=1;
         } else if (!strcmp(k,"--size")) { if (mm_size(v,&c->size)) goto invalid; profile_override=1;
-        } else if (!strcmp(k,"--stride")) { if (mm_size(v,&c->stride)) goto invalid; profile_override=1;
-        } else if (!strcmp(k,"--min-size")) { if (mm_size(v,&c->min_size)) goto invalid; c->sweep=1; profile_override=1;
-        } else if (!strcmp(k,"--max-size")) { if (mm_size(v,&c->max_size)) goto invalid; c->sweep=1; profile_override=1;
-        } else if (!strcmp(k,"--step")) { if (mm_size(v,&c->step)) goto invalid; c->sweep=1; profile_override=1;
+        } else if (!strcmp(k,"--stride")) { if (mm_size(v,&c->stride)) goto invalid; profile_override=1; process_invalid=1;
+        } else if (!strcmp(k,"--min-size")) { if (mm_size(v,&c->min_size)) goto invalid; c->sweep=1; profile_override=1; process_invalid=1;
+        } else if (!strcmp(k,"--max-size")) { if (mm_size(v,&c->max_size)) goto invalid; c->sweep=1; profile_override=1; process_invalid=1;
+        } else if (!strcmp(k,"--step")) { if (mm_size(v,&c->step)) goto invalid; c->sweep=1; profile_override=1; process_invalid=1;
         } else if (!strcmp(k,"--memory-limit")) { if (mm_size(v,&c->memory_limit)) goto invalid;
-        } else if (!strcmp(k,"--accesses")) { if (integer(v,&n) || !n || n>SIZE_MAX/sizeof(size_t)) goto invalid; c->accesses=(size_t)n; profile_override=1;
-        } else if (!strcmp(k,"--threads")) { if (integer(v,&n) || !n || n>MM_MAX_THREADS) goto invalid; c->threads=(unsigned)n; profile_override=1;
-        } else if (!strcmp(k,"--repeat")) { if (integer(v,&n) || !n || n>MM_MAX_REPEAT) goto invalid; c->repeat=(unsigned)n; profile_override=1;
+        } else if (!strcmp(k,"--accesses")) { if (integer(v,&n) || !n || n>SIZE_MAX/sizeof(size_t)) goto invalid; c->accesses=(size_t)n; profile_override=1; process_invalid=1;
+        } else if (!strcmp(k,"--threads")) { if (integer(v,&n) || !n || n>MM_MAX_THREADS) goto invalid; c->threads=(unsigned)n; profile_override=1; process_invalid=1;
+        } else if (!strcmp(k,"--repeat")) { if (integer(v,&n) || !n || n>MM_MAX_REPEAT) goto invalid; c->repeat=(unsigned)n; profile_override=1; process_invalid=1;
         } else if (!strcmp(k,"--iterations")) { if (integer(v,&c->iterations) || !c->iterations) goto invalid; profile_override=1;
-        } else if (!strcmp(k,"--seed")) { if (integer(v,&c->seed)) goto invalid; profile_override=1;
-        } else if (!strcmp(k,"--read-ratio")) { if (integer(v,&n) || n>100) goto invalid; c->read_ratio=(unsigned)n; profile_override=1;
-        } else if (!strcmp(k,"--duration")) { if (real_value(v,&c->duration) || c->duration<.001 || c->duration>3600) goto invalid; profile_override=1;
-        } else if (!strcmp(k,"--warmup")) { if (real_value(v,&c->warmup) || c->warmup<0 || c->warmup>3600) goto invalid; profile_override=1;
-        } else if (!strcmp(k,"--scale")) { if (real_value(v,&c->scale) || c->scale<=1 || c->scale>1024) goto invalid; c->sweep=1; profile_override=1;
+        } else if (!strcmp(k,"--seed")) { if (integer(v,&c->seed)) goto invalid; profile_override=1; process_invalid=1;
+        } else if (!strcmp(k,"--read-ratio")) { if (integer(v,&n) || n>100) goto invalid; c->read_ratio=(unsigned)n; profile_override=1; process_invalid=1;
+        } else if (!strcmp(k,"--duration")) { if (real_value(v,&c->duration) || c->duration<.001 || c->duration>3600) goto invalid; profile_override=1; process_invalid=1;
+        } else if (!strcmp(k,"--warmup")) { if (real_value(v,&c->warmup) || c->warmup<0 || c->warmup>3600) goto invalid; profile_override=1; process_invalid=1;
+        } else if (!strcmp(k,"--scale")) { if (real_value(v,&c->scale) || c->scale<=1 || c->scale>1024) goto invalid; c->sweep=1; profile_override=1; process_invalid=1;
+        } else if (!strcmp(k,"--processes")) { if (integer(v,&n) || !n || n>MM_MAX_PROCESSES) goto invalid; c->processes=(unsigned)n;
+        } else if (!strcmp(k,"--threads-per-process")) { if (integer(v,&n) || !n || n>MM_MAX_PROCESS_THREADS) goto invalid; c->process_threads=(unsigned)n;
+        } else if (!strcmp(k,"--shared-size")) { if (mm_size(v,&c->shared_size)) goto invalid;
+        } else if (!strcmp(k,"--thread-stack")) { if (mm_size(v,&c->thread_stack)) goto invalid;
         } else if (!strcmp(k,"--cpu-affinity")) {
+            process_invalid=1;
             const char *p=v;
             c->ncpus=0;
             if (!strcmp(v,"none")) continue;
@@ -140,6 +157,12 @@ invalid:
     if (score && (test_seen || profile_override)) {
         fprintf(stderr,"--score uses a fixed profile; do not combine it with --test or workload tuning options\n"); return -1;
     }
+    if (process_bench && (score || quick || test_seen || process_invalid)) {
+        fprintf(stderr,"--process-bench cannot be combined with score or single-process workload options\n"); return -1;
+    }
+    if (process_sweep && !process_bench) {
+        fprintf(stderr,"--process-sweep requires --process-bench\n"); return -1;
+    }
     if (score && c->ncpus>1) {
         fprintf(stderr,"--score accepts at most one CPU affinity because its fixed profile uses one worker\n"); return -1;
     }
@@ -148,6 +171,8 @@ invalid:
     }
     c->score=score;
     c->quick=quick;
+    c->process_bench=process_bench;
+    c->process_sweep=process_sweep;
     size_t smallest=c->sweep ? c->min_size : c->size;
     if (c->size%8 || c->min_size%8 || c->max_size%8 || c->step%8 ||
         c->stride%8 || c->stride>smallest || c->min_size>c->max_size ||

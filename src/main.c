@@ -4,6 +4,24 @@ int main(int argc, char **argv) {
     mm_config config;
     int parsed=mm_parse(argc,argv,&config), first=1, status=0;
     if (parsed) return parsed<0 ? 2 : 0;
+    if (config.process_bench) {
+        unsigned maximum=config.processes;
+        unsigned start=config.process_sweep ? 1 : maximum;
+        mm_process_output_begin(&config);
+        for (unsigned processes=start;processes<=maximum;) {
+            mm_process_level result;
+            if (mm_run_process_level(&config,processes,&result)) { status=1; goto process_finish; }
+            mm_process_output_level(&config,&result,first); first=0;
+            int limited=result.capacity_limited;
+            mm_process_level_free(&result);
+            if (!config.process_sweep || processes==maximum || limited) break;
+            if (processes>maximum/2) processes=maximum; else processes*=2;
+        }
+process_finish:
+        mm_process_output_end(&config);
+        if (fflush(stdout) || ferror(stdout)) { fprintf(stderr,"Output write failed\n"); return 1; }
+        return status;
+    }
     if (config.score) {
         mm_score_result result;
         if (mm_run_score(&config,&result)) {
