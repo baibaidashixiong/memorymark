@@ -4,11 +4,15 @@
 #define CHECK(x) do { if (!(x)) { fprintf(stderr,"FAIL %s:%d: %s\n",__FILE__,__LINE__,#x); return 1; } } while (0)
 int main(void) {
     size_t size;
+    mm_system_info info;
     mm_config one;
     char *one_click[]={"memorymark"};
     char *score_json[]={"memorymark","--score","--json"};
     CHECK(mm_parse(1,one_click,&one)==0 && one.score==1);
     CHECK(mm_parse(3,score_json,&one)==0 && one.score==1 && one.format==1);
+    mm_collect_system_info(&info);
+    CHECK(info.cpu_model[0] && info.kernel[0] && info.machine[0] && info.endianness[0]);
+    CHECK(info.pointer_bits==(unsigned)(sizeof(void*)*8) && info.page_size>0);
     CHECK(!mm_size("64KiB",&size) && size==65536);
     CHECK(mm_size("-1",&size) && mm_size("0",&size) && mm_size("18446744073709551615G",&size));
     CHECK(mm_size("2MBjunk",&size));

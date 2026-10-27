@@ -50,6 +50,14 @@ typedef struct {
     double gbps, ns_access, million_ops, cv;
 } mm_score_component;
 typedef struct {
+    char cpu_model[256];
+    char kernel[128];
+    char machine[64];
+    char endianness[16];
+    unsigned pointer_bits, allowed_cpus, numa_nodes;
+    size_t page_size, l1d_cache, l2_cache, l3_cache;
+} mm_system_info;
+typedef struct {
     mm_score_component components[MM_SCORE_COMPONENTS];
     size_t size, memory_limit, accesses;
     unsigned threads, repeat, read_ratio;
@@ -57,6 +65,7 @@ typedef struct {
     double duration, warmup, score, max_cv, elapsed;
     int stable;
     const char *cpu;
+    mm_system_info system;
 } mm_score_result;
 void mm_defaults(mm_config *c);
 int mm_parse(int argc, char **argv, mm_config *c);
@@ -67,6 +76,7 @@ double mm_now(void);
 const char *mm_os(void);
 const char *mm_arch(void);
 const char *mm_compiler(void);
+void mm_collect_system_info(mm_system_info *info);
 void *mm_alloc(size_t bytes);
 void mm_free(void *ptr);
 int mm_bind(int cpu);

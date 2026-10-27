@@ -1,0 +1,354 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>MemoryMark 测试集审查与完善路线</title>
+  <style>
+    :root {
+      --ink: #172027;
+      --muted: #5d6972;
+      --paper: #f5f3ee;
+      --panel: #fffdf8;
+      --line: #d8d4ca;
+      --critical: #a5342b;
+      --critical-bg: #f9e6e1;
+      --high: #a76112;
+      --high-bg: #faecd5;
+      --medium: #276b63;
+      --medium-bg: #dff0eb;
+      --later: #526575;
+      --later-bg: #e6edf2;
+      --accent: #234e70;
+      --shadow: 0 12px 30px rgba(27, 35, 40, .07);
+    }
+    * { box-sizing: border-box; }
+    html { scroll-behavior: smooth; }
+    body {
+      margin: 0;
+      color: var(--ink);
+      background:
+        linear-gradient(90deg, rgba(35,78,112,.045) 1px, transparent 1px) 0 0 / 32px 32px,
+        var(--paper);
+      font-family: ui-sans-serif, -apple-system, BlinkMacSystemFont, "Segoe UI", "Noto Sans CJK SC", sans-serif;
+      line-height: 1.65;
+    }
+    a { color: var(--accent); }
+    code, .mono { font-family: ui-monospace, SFMono-Regular, Consolas, "Liberation Mono", monospace; }
+    .shell { width: min(1180px, calc(100% - 36px)); margin: 0 auto; }
+    header { padding: 64px 0 34px; border-bottom: 1px solid var(--line); }
+    .eyebrow { margin: 0 0 12px; color: var(--accent); font-size: 12px; font-weight: 800; letter-spacing: .12em; text-transform: uppercase; }
+    h1 { max-width: 900px; margin: 0; font-family: ui-serif, Georgia, "Noto Serif CJK SC", serif; font-size: clamp(34px, 6vw, 68px); line-height: 1.04; letter-spacing: 0; }
+    .lede { max-width: 850px; margin: 24px 0 0; color: #33414a; font-size: 18px; }
+    .meta { display: flex; flex-wrap: wrap; gap: 8px 18px; margin-top: 22px; color: var(--muted); font-size: 13px; }
+    .tldr { display: grid; grid-template-columns: 160px 1fr; gap: 24px; padding: 28px 0; border-bottom: 1px solid var(--line); }
+    .tldr strong { color: var(--critical); font-size: 14px; letter-spacing: .06em; }
+    .tldr p { max-width: 900px; margin: 0; font-size: 19px; line-height: 1.55; }
+    nav { position: sticky; top: 0; z-index: 10; background: rgba(245,243,238,.95); border-bottom: 1px solid var(--line); backdrop-filter: blur(12px); }
+    nav .shell { display: flex; gap: 20px; overflow-x: auto; padding-top: 12px; padding-bottom: 12px; }
+    nav a { flex: 0 0 auto; color: var(--muted); font-size: 13px; font-weight: 700; text-decoration: none; }
+    nav a:hover { color: var(--ink); }
+    section { padding: 48px 0; border-bottom: 1px solid var(--line); }
+    h2 { margin: 0 0 10px; font-family: ui-serif, Georgia, "Noto Serif CJK SC", serif; font-size: 31px; line-height: 1.2; letter-spacing: 0; }
+    .section-intro { max-width: 820px; margin: 0 0 24px; color: var(--muted); }
+    .roadmap { display: grid; grid-template-columns: repeat(3, 1fr); gap: 0; border: 1px solid var(--line); background: var(--panel); box-shadow: var(--shadow); }
+    .phase { padding: 24px; border-right: 1px solid var(--line); }
+    .phase:last-child { border-right: 0; }
+    .phase-label { display: inline-block; margin-bottom: 10px; font-size: 11px; font-weight: 900; letter-spacing: .1em; }
+    .phase h3 { margin: 0 0 12px; font-size: 18px; }
+    .phase ul { margin: 0; padding-left: 19px; color: #3e4b54; }
+    .phase li + li { margin-top: 7px; }
+    .filters { display: flex; flex-wrap: wrap; gap: 8px; margin: 0 0 20px; }
+    button { border: 1px solid #b8b6ae; border-radius: 4px; padding: 8px 12px; color: var(--ink); background: var(--panel); font: inherit; font-size: 13px; cursor: pointer; }
+    button:hover, button.active { border-color: var(--accent); background: var(--accent); color: white; }
+    .finding { margin: 0 0 14px; padding: 24px 26px; border: 1px solid var(--line); border-left-width: 5px; background: var(--panel); box-shadow: var(--shadow); }
+    .finding[data-priority="p0"] { border-left-color: var(--critical); }
+    .finding[data-priority="p1"] { border-left-color: var(--high); }
+    .finding[data-priority="p2"] { border-left-color: var(--medium); }
+    .finding.hidden { display: none; }
+    .finding-head { display: flex; align-items: flex-start; justify-content: space-between; gap: 18px; }
+    .finding h3 { margin: 0; font-size: 20px; line-height: 1.35; }
+    .tag { flex: 0 0 auto; border-radius: 3px; padding: 3px 8px; font-size: 11px; font-weight: 900; letter-spacing: .06em; }
+    .p0 { color: var(--critical); background: var(--critical-bg); }
+    .p1 { color: var(--high); background: var(--high-bg); }
+    .p2 { color: var(--medium); background: var(--medium-bg); }
+    .evidence { margin: 13px 0; color: #3b4851; }
+    .evidence code { padding: 1px 4px; border: 1px solid #ddd9cf; background: #f3f0e9; font-size: 12px; }
+    .action { margin: 14px 0 0; padding-top: 13px; border-top: 1px solid #ebe7dd; }
+    .action b { display: inline-block; min-width: 72px; color: var(--accent); }
+    .matrix { width: 100%; border-collapse: collapse; background: var(--panel); box-shadow: var(--shadow); }
+    .matrix th, .matrix td { padding: 14px 16px; border: 1px solid var(--line); text-align: left; vertical-align: top; }
+    .matrix th { background: #ebe7de; font-size: 13px; }
+    .matrix td:first-child { width: 18%; font-weight: 750; }
+    .consensus { display: grid; grid-template-columns: 1fr 1fr; gap: 22px; }
+    .consensus > div { padding: 22px; border-top: 3px solid var(--accent); background: var(--panel); }
+    .consensus h3 { margin: 0 0 10px; font-size: 18px; }
+    .consensus ul { margin: 0; padding-left: 20px; }
+    .stop { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 12px; }
+    .stop p { margin: 0; padding: 16px 18px; border: 1px solid var(--line); background: var(--panel); }
+    .next { padding: 26px; border: 1px solid #a7bfd0; background: #eaf1f5; }
+    .next ol { margin: 0; padding-left: 22px; }
+    .next li + li { margin-top: 8px; }
+    footer { padding: 34px 0 54px; color: var(--muted); font-size: 12px; }
+    @media (max-width: 760px) {
+      header { padding-top: 38px; }
+      .tldr, .consensus { grid-template-columns: 1fr; gap: 10px; }
+      .roadmap { grid-template-columns: 1fr; }
+      .phase { border-right: 0; border-bottom: 1px solid var(--line); }
+      .phase:last-child { border-bottom: 0; }
+      .finding-head { display: block; }
+      .tag { display: inline-block; margin-bottom: 9px; }
+      .stop { grid-template-columns: 1fr; }
+      .matrix { display: block; overflow-x: auto; }
+    }
+  </style>
+</head>
+<body>
+  <header>
+    <div class="shell">
+      <p class="eyebrow">Independent review · GPT sub-agent + local audit</p>
+      <h1>MemoryMark 现在够用，但一键分数还不能代表整台机器的内存性能</h1>
+      <p class="lede">基础访问内核、误差传播、随机环验证和多线程隔离已经有不错的工程基础。下一阶段应先修正评分边界与结果语义，再扩大测试模式；继续增加模式数量不是当前最高收益。</p>
+      <div class="meta"><span>审查日期 2026-10-27</span><span>版本 1.1.0</span><span>Linux x86_64</span><span>CTest 2/2 通过</span></div>
+    </div>
+  </header>
+
+  <div class="tldr shell">
+    <strong>结论先行</strong>
+    <p>最值得做的是：修正评分内存下限、给多线程结果明确计时语义、把 128 MiB 评分为“warm logical-access score”并增加 DRAM 导向档案、把评分纳入自动化测试。随后再补 Copy/Triad、TLB sweep、多链延迟、固定总工作集、NUMA 与流式写。</p>
+  </div>
+
+  <nav aria-label="页面导航">
+    <div class="shell">
+      <a href="#roadmap">路线图</a>
+      <a href="#findings">审查发现</a>
+      <a href="#coverage">覆盖矩阵</a>
+      <a href="#consensus">双方结论</a>
+      <a href="#next">建议顺序</a>
+    </div>
+  </nav>
+
+  <main class="shell">
+    <section id="roadmap">
+      <h2>三阶段路线</h2>
+      <p class="section-intro">先让已有结果自洽，再提升解释力，最后扩展硬件能力。性能数值不进入 CI 断言，CI 只验证结构、正确性和序列稳定性。</p>
+      <div class="roadmap">
+        <div class="phase">
+          <span class="phase-label p0">PHASE 1 · 先修语义</span>
+          <h3>评分可信度</h3>
+          <ul>
+            <li>最低预算改为 256 MiB</li>
+            <li>延迟链改用 64 字节节点步长</li>
+            <li>采集 CPU、内核、编译参数与实际 CPU</li>
+            <li>增加评分路径 CTest</li>
+          </ul>
+        </div>
+        <div class="phase">
+          <span class="phase-label p1">PHASE 2 · 提升解释力</span>
+          <h3>统计与并行</h3>
+          <ul>
+            <li>5 轮样本、分位数和 MAD</li>
+            <li>输出线程起跑偏斜与活跃区间</li>
+            <li>拆分 streaming / random-latency 指数</li>
+            <li>增加 Copy、Triad、TLB、多链</li>
+          </ul>
+        </div>
+        <div class="phase">
+          <span class="phase-label p2">PHASE 3 · 扩展硬件</span>
+          <h3>平台与放置</h3>
+          <ul>
+            <li>可选 NUMA local/remote 与页分布验证</li>
+            <li>可选 non-temporal store</li>
+            <li>Windows/MSVC、ARM64 CI</li>
+            <li>固定总工作集并行分片</li>
+          </ul>
+        </div>
+      </div>
+    </section>
+
+    <section id="findings">
+      <h2>审查发现</h2>
+      <p class="section-intro">以下不是“最好都做”的愿望清单，而是按对结果可信度的影响排序。P0 应先处理，P1 决定工具是否有解释力，P2 是后续平台能力。</p>
+      <div class="filters" aria-label="筛选审查发现">
+        <button class="active" data-filter="all">全部</button>
+        <button data-filter="p0">P0 必须修</button>
+        <button data-filter="p1">P1 值得做</button>
+        <button data-filter="p2">P2 后续扩展</button>
+      </div>
+
+      <article class="finding" data-priority="p0">
+        <div class="finding-head"><h3>评分最低内存限制与延迟测试实际需求不一致</h3><span class="tag p0">P0 · 必须修</span></div>
+        <p class="evidence">参数层接受 <code>192M</code>，但延迟测试同时保留 128 MiB 数据区和 128 MiB 排列数组，实际至少需要 256 MiB。结果会在完成多个项目后才在 latency 项失败。依据：<code>src/cli.c:143</code>、<code>src/memory.c:26</code>、<code>src/memory.c:28</code>、<code>src/bench_parallel.c:112</code>。</p>
+        <p class="action"><b>建议</b>把评分下限改为 256 MiB，并添加 255/256 MiB 边界测试。更长期可以设计低峰值环构建，但不应阻塞当前修复。</p>
+      </article>
+
+      <article class="finding" data-priority="p0">
+        <div class="finding-head"><h3>多线程总带宽实际上是“完成吞吐”，不是严格并行窗口带宽</h3><span class="tag p0">P0 · 语义</span></div>
+        <p class="evidence">总时间从主线程放行起算，但每个线程的字节数来自各自的开始/结束区间。线程启动偏斜、调度和过订阅都被计入分母，却仍被展示为 aggregate bandwidth 与 scaling efficiency。依据：<code>src/bench_parallel.c:61</code>、<code>src/bench_parallel.c:146</code>、<code>src/bench_parallel.c:158</code>。</p>
+        <p class="action"><b>建议</b>输出每线程 start/end、最大起跑偏斜和活跃重叠率；要么改名为 completion throughput，要么按共同重叠窗口计算工作量。多线程分数应另列，不混入单线程 MMark。</p>
+      </article>
+
+      <article class="finding" data-priority="p0">
+        <div class="finding-head"><h3>128 MiB 固定工作集不能保证越过 LLC</h3><span class="tag p0">P0 · 可比性</span></div>
+        <p class="evidence">当前评分固定 128 MiB、warm/no-flush。128 MiB 以上的服务器 LLC 会让 MMark 主要反映 Cache 而非 DRAM，且不同机器含义不同。依据：<code>src/score.c:20</code>、README 的 Cache 限制说明。</p>
+        <p class="action"><b>建议</b>把当前分数正式命名为 warm logical-access score，并输出与检测到的 LLC 的容量关系；新增独立的 DRAM-oriented profile，而不是静默改变所有机器的同一规格。</p>
+      </article>
+
+      <article class="finding" data-priority="p0">
+        <div class="finding-head"><h3>三轮 CV 不足以支撑 STABLE 标签</h3><span class="tag p0">P0 · 统计</span></div>
+        <p class="evidence">评分只采 3 轮，用标准差/均值阈值 10% 判断稳定。三点很难区分偶发抢占、热降频与真实分布。依据：<code>src/score.c:21</code>、<code>src/score.c:37</code>、<code>src/score.c:45</code>。</p>
+        <p class="action"><b>建议</b>使用至少 5 轮，报告 median、MAD/IQR 与原始轮次；稳定性标签只描述本次样本内波动，不暗示系统处在理想状态。</p>
+      </article>
+
+      <article class="finding" data-priority="p1">
+        <div class="finding-head"><h3>延迟评分使用 8 字节步长，节点会密集落在同一缓存行</h3><span class="tag p1">P1 · 算法</span></div>
+        <p class="evidence">评分档案对六项统一设置 <code>stride=8</code>，指针链节点因此每行多个，延迟混入同一 Cache line 命中与局部访问效应。依据：<code>src/score.c:22</code>、<code>src/memory.c:31</code>。</p>
+        <p class="action"><b>建议</b>仅对 latency 使用独立固定步长，例如 64 字节，并在 profile 中分别记录 streaming/random/latency stride；不要把 64 写死为对未知 Cache line 的硬件假设。</p>
+      </article>
+
+      <article class="finding" data-priority="p1">
+        <div class="finding-head"><h3>已加入架构快照，但仍缺完整实验环境指纹</h3><span class="tag p2">部分完成</span></div>
+        <p class="evidence">当前已输出 CPU 型号、内核、机器架构、页大小、字节序、指针宽度、可检测的 L1d/L2/L3、允许 CPU 集与 NUMA 节点。仍缺实际执行 CPU、完整编译参数、THP 状态和经过验证的 NUMA 页落点。依据：<code>src/output.c</code>、<code>src/platform.c</code>。</p>
+        <p class="action"><b>后续</b>继续增加可缺失的 build/environment 字段；探测失败写 <code>unknown/null</code>，不能使评分失败。自定义 <code>-O3 -march=native</code> 仍必须能从结果中识别。</p>
+      </article>
+
+      <article class="finding" data-priority="p1">
+        <div class="finding-head"><h3>评分没有进入常规 CTest，地址序列也没有评分级哈希</h3><span class="tag p1">P1 · 测试</span></div>
+        <p class="evidence">CTest 只跑很小的详细模式，<code>--score</code> 仅测试非法参数；完整评分是手工烟雾测试。评分 JSON 的分项也不展示每项 sequence hash。依据：<code>tests/integration.py:23</code>、<code>tests/integration.py:77</code>、<code>tests/unit.c</code>。</p>
+        <p class="action"><b>建议</b>增加测试专用短评分 profile，不改变发布 v1；验证六项、有限值、几何平均重算、固定字段、JSON/CSV 和地址哈希。发布评分记录每项 sequence hash。</p>
+      </article>
+
+      <article class="finding" data-priority="p1">
+        <div class="finding-head"><h3>单几何平均混入不同访问维度，最好拆成两个主指数</h3><span class="tag p1">P1 · 评分设计</span></div>
+        <p class="evidence">顺序流式、独立随机请求和串行依赖延迟被统一换算为 Mops/s 后等权几何平均。分数能保留，但“内存性能”含义过宽，且会受编译器向量化和 MLP 影响。</p>
+        <p class="action"><b>建议</b>保留 MMark 作为版本化摘要，同时报告 <code>streaming throughput</code> 与 <code>random/latency responsiveness</code> 两个分组指数；分组计算方法要单测和版本化。</p>
+      </article>
+
+      <article class="finding" data-priority="p1">
+        <div class="finding-head"><h3>随机 trace 固定且会带来未计费索引流</h3><span class="tag p1">P1 · 代表性</span></div>
+        <p class="evidence">地址数组只构建一次，各轮重复；它有可复现优点，但会形成额外的 Cache/DRAM 流，且有放回随机写会产生重复热点。依据：<code>src/memory.c:37</code>、<code>src/bench_random.c:5</code>。</p>
+        <p class="action"><b>建议</b>保留现有模式并命名为 warm fixed trace；另加每轮再生/双缓冲 trace、无放回排列访问，并报告索引字节、唯一地址数和覆盖率。</p>
+      </article>
+
+      <article class="finding" data-priority="p1">
+        <div class="finding-head"><h3>自动化测试缺少关键测量语义和故障注入</h3><span class="tag p1">P1 · 测试</span></div>
+        <p class="evidence">当前测试重访问计数与输出结构，缺少线程起跑偏斜、评分成功路径、索引数组二次分配失败、实际 CPU 绑定、评分环境元数据。Python 测试依赖 <code>assert</code>，设置 <code>PYTHONOPTIMIZE</code> 时可能被跳过。</p>
+        <p class="action"><b>建议</b>把集成断言改为显式失败函数或 unittest；增加 score smoke、allocation fault injection、并行时间语义断言和评分 schema 兼容测试。</p>
+      </article>
+
+      <article class="finding" data-priority="p1">
+        <div class="finding-head"><h3>写模式数据过于一致，可能受压缩或特殊路径影响</h3><span class="tag p1">P1 · 数据</span></div>
+        <p class="evidence">顺序写整块写同一个值，随机写也写同一个值。多数平台无内存压缩，但这不是最稳健的基准数据模式。依据：<code>src/bench_seq.c:14</code>、<code>src/bench_random.c:6</code>。</p>
+        <p class="action"><b>建议</b>使用低开销的地址相关值，例如 <code>value ^ index</code>，同步调整验证；性能语义保持为逻辑 8 字节写。</p>
+      </article>
+
+      <article class="finding" data-priority="p1">
+        <div class="finding-head"><h3>覆盖模式还缺少最常用的内存工作负载</h3><span class="tag p1">P1 · 覆盖度</span></div>
+        <p class="evidence">现有六项覆盖基础读写、混合、随机和单链延迟，但没有 Copy/Triad、页步长/TLB sweep、多链 MLP、固定总容量并行分片、同核 SMT 对照。</p>
+        <p class="action"><b>建议</b>按实际用途排序增加 Copy/Triad、TLB sweep、多链追逐；这三种对解释真实应用最有价值。每项都必须明确流数量、逻辑字节和索引开销。</p>
+      </article>
+
+      <article class="finding" data-priority="p2">
+        <div class="finding-head"><h3>NUMA 仍是明确的平台能力缺口</h3><span class="tag p2">P2 · 可选能力</span></div>
+        <p class="evidence">当前仅按 OS first-touch 分配，绑定 CPU 不等于绑定内存节点，也没有验证页落点。依据：<code>src/bench_parallel.c:42</code>。</p>
+        <p class="action"><b>建议</b>Linux 可选实现 local/bind/interleave 策略，验证实际 node；容器限制或无权限时显式失败，不静默退化。保持为高级模式，不混入基础分。</p>
+      </article>
+
+      <article class="finding" data-priority="p2">
+        <div class="finding-head"><h3>普通缓存写与 DRAM 写回语义之间仍缺流式写模式</h3><span class="tag p2">P2 · 可选能力</span></div>
+        <p class="evidence">当前 store 后只有 C11 顺序栅栏，正确，但不会 flush 脏行。工具尚无 non-temporal/streaming store。</p>
+        <p class="action"><b>建议</b>在 x86/ARM 能力探测明确时加入独立模式，单列写分配与回写语义；不并入现有固定分数。</p>
+      </article>
+
+      <article class="finding" data-priority="p2">
+        <div class="finding-head"><h3>跨平台与工程发布矩阵不完整</h3><span class="tag p2">P2 · 工程</span></div>
+        <p class="evidence">Linux x86_64 已充分验证；Windows/MSVC、Windows clang-cl、ARM64 尚无 CI。计时失败路径仍直接 <code>abort()</code>，不适合可诊断 CLI。</p>
+        <p class="action"><b>建议</b>使用错误码/消息替代计时 abort，并建立 Linux GCC/Clang、Windows、ARM64 构建矩阵。性能数值不在 CI 比较，只跑正确性与 schema。</p>
+      </article>
+    </section>
+
+    <section id="coverage">
+      <h2>当前覆盖矩阵</h2>
+      <p class="section-intro">这张表区分“已有测试类型”和“已有可信语义”。有模式不等于有相应的验收覆盖。</p>
+      <table class="matrix">
+        <thead><tr><th>范围</th><th>当前状态</th><th>主要缺口</th></tr></thead>
+        <tbody>
+          <tr><td>顺序读/写</td><td>已实现并验证</td><td>缺少 Copy/Triad、non-temporal、多流写</td></tr>
+          <tr><td>读写混合</td><td>已实现 0/30/50/70/100 比例测试</td><td>固定读块/写块，不是逐元素概率流或 Triad</td></tr>
+          <tr><td>随机读写</td><td>已实现固定种子与范围验证</td><td>固定 warm trace、索引流开销、无放回模式</td></tr>
+          <tr><td>依赖延迟</td><td>完整环和损坏环测试充分</td><td>评分步长 8 字节、单链、无 MLP 扫描</td></tr>
+          <tr><td>工作集扫描</td><td>倍增/线性及预算失败已测</td><td>没有自动关联 Cache/TLB/页大小拐点</td></tr>
+          <tr><td>多线程</td><td>私有工作集、TSan、逐线程计数已测</td><td>完成吞吐而非重叠窗口；无私有多核拓扑对照</td></tr>
+          <tr><td>一键评分</td><td>文本/JSON/CSV 手工成功；公式单测</td><td>无 CTest、环境指纹、地址哈希；内存下限错误</td></tr>
+          <tr><td>NUMA/流式写</td><td>明确未实现</td><td>需作为高级可选模式，而非基础分的一部分</td></tr>
+          <tr><td>跨平台</td><td>Linux GCC/Clang 实测</td><td>Windows、ARM、其他 Unix 无 CI 覆盖</td></tr>
+        </tbody>
+      </table>
+    </section>
+
+    <section id="consensus">
+      <h2>子代理与本地审查的合并结论</h2>
+      <div class="consensus">
+        <div>
+          <h3>双方一致</h3>
+          <ul>
+            <li>基础内核与环验证扎实，不该推倒重做。</li>
+            <li>当前分数是产品内 warm logical-access 摘要，不应包装成跨机器 DRAM 排名。</li>
+            <li>最高收益是修语义、补评分自动化、补环境元数据。</li>
+            <li>不能通过关缓存、切 governor 或要求 root 来“提升”成绩。</li>
+          </ul>
+        </div>
+        <div>
+          <h3>各自补充</h3>
+          <ul>
+            <li>子代理首先发现评分 192/256 MiB 自相矛盾，以及并行完成吞吐语义。</li>
+            <li>本地审查补充了评分 latency stride=8、评分序列哈希缺失、固定值和 Python assert 风险。</li>
+            <li>最终顺序统一为：正确性 → 评分自动化/元数据 → 统计与并行语义 → 新工作负载 → NUMA/平台。</li>
+          </ul>
+        </div>
+      </div>
+    </section>
+
+    <section>
+      <h2>暂不建议做</h2>
+      <div class="stop">
+        <p>不默认关闭缓存、清空 LLC、修改 governor 或要求管理员权限。</p>
+        <p>不把 cached-store 后的 memory fence 宣称为 DRAM writeback。</p>
+        <p>不为跨机器排行榜仓促设置绝对参考基线；先稳定 profile 与环境元数据。</p>
+        <p>不把未实机验证的 Windows/MSVC、ARM 或 NUMA 表述为已经兼容。</p>
+      </div>
+    </section>
+
+    <section id="next">
+      <h2>建议下一批改动</h2>
+      <div class="next">
+        <ol>
+          <li><b>修正评分边界：</b>192 MiB → 256 MiB，补 255/256 MiB 边界测试。</li>
+          <li><b>修评分物理含义：</b>latency 单独使用 64 字节步长；把 profile 标为 warm、residency unknown。</li>
+          <li><b>补环境指纹：</b>CPU 型号、内核、LLC、实际执行 CPU、完整编译 flags、THP/NUMA 可检测项。</li>
+          <li><b>补 score smoke：</b>测试专用短 profile，验证六项、formula、JSON/CSV、sequence hash 和固定字段。</li>
+          <li><b>再改并行计时：</b>记录每线程 start/end，输出起跑偏斜与重叠率，明确 completion throughput。</li>
+          <li><b>提升统计：</b>至少 5 个评分轮次，加入 MAD/IQR 与分组指数。</li>
+          <li><b>扩模式：</b>Copy/Triad → TLB sweep → 多链 chasing → 固定总工作集并行分片。</li>
+        </ol>
+      </div>
+    </section>
+  </main>
+
+  <footer>
+    <div class="shell">审查基于当前工作区源码与文档。本次只生成报告，未修改测试实现；CTest 当前结果仍为 2/2 通过。</div>
+  </footer>
+
+  <script>
+    const buttons = document.querySelectorAll('[data-filter]');
+    const findings = document.querySelectorAll('.finding[data-priority]');
+    buttons.forEach((button) => {
+      button.addEventListener('click', () => {
+        const filter = button.dataset.filter;
+        buttons.forEach((item) => item.classList.toggle('active', item === button));
+        findings.forEach((item) => item.classList.toggle('hidden', filter !== 'all' && item.dataset.priority !== filter));
+      });
+    });
+  </script>
+</body>
+</html>

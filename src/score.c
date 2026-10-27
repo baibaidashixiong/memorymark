@@ -25,6 +25,7 @@ int mm_run_score(const mm_config *base, mm_score_result *r) {
     r->accesses=c.accesses;
     r->memory_limit=base->memory_limit;
     r->cpu=base->ncpus ? "explicit" : "os-selected";
+    mm_collect_system_info(&r->system);
     for (unsigned i=0;i<MM_SCORE_COMPONENTS;++i) {
         mm_result result;
         c.test=tests[i];

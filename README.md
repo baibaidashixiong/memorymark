@@ -4,6 +4,8 @@ MemoryMark 是 C11 内存子系统微基准工具。借鉴 CoreMark 的固定负
 
 ## 构建与首次运行
 
+最低要求 CMake 3.13；已在 CMake 3.13.4 和 4.3.0 上验证配置。编译器需支持 C11，线程与计时使用操作系统 API。
+
 ```sh
 cmake -S . -B build -DCMAKE_BUILD_TYPE=Release
 cmake --build build -j
@@ -55,6 +57,15 @@ Score = (read × write × mix × random_read × random_write × latency_rate)^(1
 ```
 
 评分模式只接受输出、`--memory-limit` 和最多一个 CPU 亲和性参数；不能混入 `--test`、`--size`、`--duration` 等工作负载参数，否则退出码为 2。这是为了确保所有 MMark 使用相同规格。需要自定义测试规模和多线程信息时使用详细模式。
+
+评分和详细结果的文本、JSON、CSV 都包含架构快照：
+
+- CPU 型号、内核版本、机器架构字符串。
+- 指针宽度与字节序。
+- 当前进程允许使用的逻辑 CPU 数。
+- 页大小、可检测的 L1d/L2/L3 容量和 NUMA 节点数。
+
+Linux 通过 `uname`、`/proc/cpuinfo`、`sysconf`、CPU affinity 和 sysfs 尽力采集；Windows 使用系统 API 与 `PROCESSOR_IDENTIFIER`。手工指定 affinity 时，“allowed CPUs”仍表示进程可用的 CPU 集合，而不是绑核列表；绑核列表位于 `cpu_affinity`。无法检测的缓存容量、NUMA 节点或平台字段输出为 `null`/`unknown`，不会导致基准测试失败。这些字段描述运行环境，不会被解释为实际 DRAM 流量或 NUMA 页落点验证。
 
 ```sh
 # Debug
